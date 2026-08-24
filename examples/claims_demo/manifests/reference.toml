@@ -1,0 +1,22 @@
+etlonomy_manifest = 1
+
+[[datasets]]
+canonical_name = 'REFERENCE.PROVIDER'
+description = 'Provider attributes used to enrich claims.'
+
+[[datasets.versions]]
+version = 1
+valid_from = 2026-01-01
+source_type = 'parquet'
+source_uri = 'data/providers.parquet'
+
+[[datasets]]
+canonical_name = 'REFERENCE.REGION'
+description = 'Region labels stored in a local SQL table.'
+
+[[datasets.versions]]
+version = 1
+valid_from = 2026-01-01
+source_type = 'sql_table'
+source_uri = 'sqlite:///data/reference.sqlite'
+query = 'regions'

@@ -1,0 +1,26 @@
+etlonomy_manifest = 1
+
+[[datasets]]
+canonical_name = 'CLAIMS.CLAIM_LINE'
+description = 'Claim lines used by the documentation example.'
+
+[[datasets.versions]]
+version = 1
+valid_from = 2026-01-01
+valid_to = 2026-09-01
+source_type = 'csv'
+source_uri = 'data/claim_line.csv'
+
+[[datasets.versions]]
+version = 2
+valid_from = 2026-09-01
+valid_to = 2027-01-01
+source_type = 'parquet'
+source_uri = 'data/claim_line.parquet'
+
+[[datasets.versions]]
+version = 3
+valid_from = 2027-01-01
+source_type = 'sql_table'
+source_uri = 'sqlite:///data/claims.sqlite'
+query = 'claim_line'

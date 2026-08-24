@@ -1,0 +1,37 @@
+site_name: Etlonomy
+site_description: Define data sources and dependencies for Python ETL jobs
+docs_dir: docs
+strict: true
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Implementation checklist: implementation-checklist.md
+  - Mental model: concepts.md
+  - Logical datasets: datasets.md
+  - TOML manifests: manifests.md
+  - Versioning: versioning.md
+  - Catalog: catalog.md
+  - Environment settings: environments.md
+  - ETL jobs: etl-jobs.md
+  - Testing safely: testing.md
+  - Reusable requirements: requires.md
+  - Lineage: lineage.md
+  - File sources: files.md
+  - SQL sources: sql.md
+  - Credentials: credentials.md
+  - Database connections: sqlalchemy.md
+  - CLI reference: cli.md
+  - Architecture: architecture.md
+  - Contributing: contributing.md
+  - Tutorials:
+      - Tutorial home: tutorials/index.md
+      - First project: tutorials/01-first-project.md
+      - CSV and Parquet: tutorials/02-csv-and-parquet.md
+      - SQLite SQL dataset: tutorials/03-sql-dataset.md
+      - Testing: tutorials/04-testing.md
+      - Reusable functions: tutorials/05-reusable-functions.md
+      - Lineage: tutorials/06-lineage.md
+      - Migrating a source: tutorials/07-migrating-a-source.md
+      - Optional credentials: tutorials/08-credentials.md
+      - SAS7BDAT extension: tutorials/09-sas7bdat.md
+      - Remote SQL database extension: tutorials/10-databricks.md
