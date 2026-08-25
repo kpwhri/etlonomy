@@ -62,10 +62,14 @@ See [catalog commands](catalog.md), the [CLI reference](cli.md), and
 - [ ] List logical outputs when the job creates a known dataset
 - [ ] Use `@etlonomy.requires` on reusable helpers that need more data
 - [ ] Add helpers to `uses` when a job or another helper may call them
+- [ ] Use `ExternalDatasetId` only when another Python library owns resolution
+- [ ] Keep each external provider in application code or a separate integration package
+- [ ] Pass external dependency arguments directly in focused unit tests
 - [ ] Import job modules before calling `Runtime.run()`
 - [ ] Create `CatalogDatasetProvider` from the catalog and run the job by name
 
-Read [ETL jobs](etl-jobs.md), [reusable helpers](requires.md), and
+Read [ETL jobs](etl-jobs.md), [reusable helpers](requires.md),
+[external datasets](external-datasets.md), and
 [Tutorial 5](tutorials/05-reusable-functions.md).
 
 ## Test the project

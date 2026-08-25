@@ -6,7 +6,6 @@ from datetime import date
 from pathlib import Path
 
 import polars as pl
-import pytest
 
 import etlonomy
 from etlonomy.catalog import SQLiteCatalog, build_catalog

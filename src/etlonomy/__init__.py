@@ -31,6 +31,7 @@ from etlonomy.exceptions import (
     DatasetVersionNotFoundError,
     DependencyCycleError,
     ETLonomyError,
+    ExternalDatasetProviderNotConfiguredError,
     ManifestError,
     MissingTestColumnError,
     MissingTestDatasetError,
@@ -38,8 +39,21 @@ from etlonomy.exceptions import (
     VersionOverlapError,
 )
 from etlonomy.lineage import LineageGraph
-from etlonomy.models import DatasetId, ExecutionContext, Read, read
-from etlonomy.providers import DatasetProvider, TestDatasetProvider
+from etlonomy.models import (
+    DatasetId,
+    DependencyRead,
+    ExecutionContext,
+    ExternalDatasetId,
+    ExternalRead,
+    Read,
+    external_read,
+    read,
+)
+from etlonomy.providers import (
+    DatasetProvider,
+    ExternalDatasetProvider,
+    TestDatasetProvider,
+)
 from etlonomy.registry import EtlDefinition, Registry, RequirementDefinition, registry
 from etlonomy.runtime import Runtime
 
@@ -60,12 +74,17 @@ __all__ = [
     'DatasetProvider',
     'DatasetProviderError',
     'DatasetVersionNotFoundError',
+    'DependencyRead',
     'DependencyCycleError',
     'ETLonomyError',
     'EnvironmentCredentialProvider',
     'EnvironmentDefinition',
     'EtlDefinition',
     'ExecutionContext',
+    'ExternalDatasetId',
+    'ExternalDatasetProvider',
+    'ExternalDatasetProviderNotConfiguredError',
+    'ExternalRead',
     'LineageGraph',
     'KeePassCredentialProvider',
     'KeePassProfile',
@@ -88,6 +107,7 @@ __all__ = [
     '__version__',
     'build_catalog',
     'etl',
+    'external_read',
     'load_environment',
     'parse_environment',
     'read',

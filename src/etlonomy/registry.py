@@ -6,7 +6,7 @@ from pathlib import Path
 from types import MappingProxyType
 
 from etlonomy.exceptions import RegistryError
-from etlonomy.models import DatasetId, Read
+from etlonomy.models import DatasetId, DependencyRead
 
 
 @dataclass(frozen=True, slots=True)
@@ -15,7 +15,7 @@ class EtlDefinition:
 
     name: str
     function: Callable[..., object]
-    inputs: Mapping[str, Read]
+    inputs: Mapping[str, DependencyRead]
     outputs: tuple[DatasetId, ...]
     source_file: Path | None
     source_line: int | None
@@ -33,7 +33,7 @@ class RequirementDefinition:
     """Describe the datasets injected into a reusable function."""
 
     function: Callable[..., object]
-    inputs: Mapping[str, Read]
+    inputs: Mapping[str, DependencyRead]
     source_file: Path | None
     source_line: int | None
     uses: tuple[Callable[..., object], ...] = ()

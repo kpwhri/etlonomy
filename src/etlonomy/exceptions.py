@@ -41,6 +41,10 @@ class DatasetProviderError(ETLonomyError):
     """Indicate that a dataset provider could not satisfy a read."""
 
 
+class ExternalDatasetProviderNotConfiguredError(DatasetProviderError):
+    """Indicate that no provider handles an external dataset system."""
+
+
 class CatalogEnvironmentMismatchError(DatasetProviderError):
     """Indicate that an explicit execution environment conflicts with a catalog."""
 

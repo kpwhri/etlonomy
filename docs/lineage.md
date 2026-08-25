@@ -78,6 +78,18 @@ print(graph.uses('cohort.build'))
 Declarations show what may be used. The runtime record shows what one run actually used. Looking at both gives the
 clearest answer.
 
+External datasets are reported separately so methods such as `parents()` continue to return catalog `DatasetId`
+objects:
+
+```python
+print(graph.declared_external_uses('cohort.build'))
+print(graph.external_uses('cohort.build'))
+print(graph.external_consumers(SV_CLAIMS))
+```
+
+Declaration graphs still connect the external dataset to the reusable function and job. See
+[external datasets](external-datasets.md) for a complete provider and testing example.
+
 ## Choose a graph format
 
 ```console
@@ -94,5 +106,5 @@ etlonomy uses CLAIMS.CLAIM_LINE --module claims_demo.jobs --format json
 Pass `--module` when a command needs your application's registered jobs. The command imports that module instead of
 searching every Python file.
 
-Previous: [reusable requirements](requires.md) · Next:
+Previous: [external datasets](external-datasets.md) · Next:
 [choose file source types](files.md)

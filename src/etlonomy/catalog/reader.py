@@ -10,7 +10,11 @@ from pathlib import Path
 from types import MappingProxyType
 
 from etlonomy.catalog.migrations import CURRENT_SCHEMA_VERSION
-from etlonomy.exceptions import CatalogError, DatasetNotFoundError, DatasetVersionNotFoundError
+from etlonomy.exceptions import (
+    CatalogError,
+    DatasetNotFoundError,
+    DatasetVersionNotFoundError,
+)
 from etlonomy.manifest import ColumnManifest
 from etlonomy.models import DatasetId
 

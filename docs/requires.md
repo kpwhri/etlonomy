@@ -105,6 +105,13 @@ result = attach_specialty(
 Passing `providers` directly skips catalog lookup. This makes the helper easy to test and lets other Python code call it
 without a running Etlonomy job.
 
+An explicit value is passed through unchanged. Etlonomy does not remove extra columns from it. In contrast,
+`TestDatasetProvider` and catalog providers select the columns named by the `Read` request.
+
+If another Python library owns the requested dataset, use an external read instead of importing that library inside the
+helper. The [external dataset guide](external-datasets.md) shows how `claims=claims_df` still bypasses the external
+provider during a test.
+
 ## Choose the right decorator
 
 - Use `@etlonomy.etl` for a top-level named job with declared outputs
@@ -117,4 +124,4 @@ Calling a `@requires` helper without its data and outside an active runtime rais
 silently find a production provider.
 
 Previous: [safe testing](testing.md) · Next:
-[trace lineage](lineage.md)
+[use an external dataset](external-datasets.md)

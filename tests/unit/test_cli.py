@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from etlonomy.cli import main
-from etlonomy.models import DatasetId, read
+from etlonomy.models import DatasetId, ExternalDatasetId, external_read, read
 from etlonomy.registry import EtlDefinition, RequirementDefinition, registry
 
 MANIFEST = """etlonomy_manifest = 1
@@ -277,3 +277,53 @@ def test_cli_traces_declared_reusable_function_uses(capsys):
     assert [f'function:{attach_provider.__qualname__}', 'job:cli.declared_uses'] in graph[
         'edges'
     ]
+
+
+def test_cli_reports_external_dependencies_and_consumers(capsys):
+    members = DatasetId('CLI', 'EXTERNAL_MEMBERS')
+    output = DatasetId('CLI', 'EXTERNAL_OUTPUT')
+    claims = ExternalDatasetId('vdwcore', 'sv.vdw_claims')
+
+    def attach_external_claims():
+        pass
+
+    registry.register_requirement(
+        RequirementDefinition(
+            attach_external_claims,
+            {'claims': external_read(claims, 'mrn', 'diagnosis_code')},
+            None,
+            None,
+        )
+    )
+    registry.register_etl(
+        EtlDefinition(
+            'cli.external_sources',
+            lambda members: members,
+            {'members': read(members, 'mrn')},
+            (output,),
+            None,
+            None,
+            (attach_external_claims,),
+        )
+    )
+
+    assert main(['deps', 'cli.external_sources', '--format', 'json']) == 0
+    dependencies = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
+    assert dependencies['direct'] == ['CLI.EXTERNAL_MEMBERS']
+    assert dependencies['transitive'] == ['vdwcore:sv.vdw_claims']
+
+    assert main(['uses', str(claims), '--format', 'json']) == 0
+    consumers = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
+    assert consumers == {
+        'dataset': 'vdwcore:sv.vdw_claims',
+        'downstream_datasets': ['CLI.EXTERNAL_OUTPUT'],
+        'etl_jobs': ['cli.external_sources'],
+        'reusable_functions': [attach_external_claims.__qualname__],
+    }
+
+    assert main(['graph', 'cli.external_sources', '--format', 'json']) == 0
+    graph = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
+    assert [
+        'vdwcore:sv.vdw_claims',
+        f'function:{attach_external_claims.__qualname__}',
+    ] in graph['edges']

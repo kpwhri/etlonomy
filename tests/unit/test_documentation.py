@@ -49,6 +49,33 @@ def test_documented_environment_sources_match_executed_integration_examples():
     assert "context = etlonomy.ExecutionContext(environment='prod')" in content
 
 
+def test_external_dataset_guide_matches_the_executable_public_api():
+    content = (DOCS_DIRECTORY / 'external-datasets.md').read_text(encoding='utf8')
+    workflow = (
+        PROJECT_DIRECTORY
+        / 'tests'
+        / 'end_to_end'
+        / 'test_external_dataset_workflow.py'
+    ).read_text(encoding='utf8')
+
+    examples = (
+        'SV_CLAIMS = etlonomy.ExternalDatasetId(',
+        "system='vdwcore'",
+        "name='sv.vdw_claims'",
+        'claims=etlonomy.external_read(',
+        'external_providers={',
+        "claims=claims_df",
+        "declared_external_uses('cohort.build')",
+        'FileExternalDatasetProvider(source_view)',
+    )
+    for example in examples:
+        assert example in content
+
+    assert "ExternalDatasetId('files', 'sv.claims')" in workflow
+    assert "external_providers={" in workflow
+    assert "declared_external_uses('cohort.external_claims')" in workflow
+
+
 def test_tutorial_home_indexes_every_tutorial_in_numbered_order():
     tutorial_directory = DOCS_DIRECTORY / 'tutorials'
     index = (tutorial_directory / 'index.md').read_text(encoding='utf8')

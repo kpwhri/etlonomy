@@ -20,7 +20,7 @@ from etlonomy.environment import (
 from etlonomy.exceptions import ETLonomyError
 from etlonomy.lineage import LineageGraph
 from etlonomy.manifest import load_manifest_directory
-from etlonomy.models import DatasetId
+from etlonomy.models import DatasetId, ExternalDatasetId, ExternalRead, Read
 from etlonomy.registry import registry
 
 
@@ -100,31 +100,27 @@ def _catalog_command(args: argparse.Namespace) -> None:
     if args.catalog_command == 'diff':
         left = _catalog_snapshot(SQLiteCatalog(args.left))
         right = _catalog_snapshot(SQLiteCatalog(args.right))
-        print(
-            json.dumps(
-                {
-                    'added': sorted(right.keys() - left.keys()),
-                    'removed': sorted(left.keys() - right.keys()),
-                    'changed': sorted(
-                        name
-                        for name in left.keys() & right.keys()
-                        if left[name] != right[name]
-                    ),
-                    'environment_changed': (
-                            SQLiteCatalog(args.left).get_environment()
-                            != SQLiteCatalog(args.right).get_environment()
-                    ),
-                    'roots_changed': (
-                            SQLiteCatalog(args.left).list_roots()
-                            != SQLiteCatalog(args.right).list_roots()
-                    ),
-                    'connections_changed': (
-                            SQLiteCatalog(args.left).list_connections()
-                            != SQLiteCatalog(args.right).list_connections()
-                    ),
-                }
-            )
-        )
+        print(json.dumps({
+            'added': sorted(right.keys() - left.keys()),
+            'removed': sorted(left.keys() - right.keys()),
+            'changed': sorted(
+                name
+                for name in left.keys() & right.keys()
+                if left[name] != right[name]
+            ),
+            'environment_changed': (
+                    SQLiteCatalog(args.left).get_environment()
+                    != SQLiteCatalog(args.right).get_environment()
+            ),
+            'roots_changed': (
+                    SQLiteCatalog(args.left).list_roots()
+                    != SQLiteCatalog(args.right).list_roots()
+            ),
+            'connections_changed': (
+                    SQLiteCatalog(args.left).list_connections()
+                    != SQLiteCatalog(args.right).list_connections()
+            ),
+        }))
         return
     catalog = SQLiteCatalog(args.database)
     if args.catalog_command == 'show':
@@ -194,15 +190,27 @@ def _lineage_command(args: argparse.Namespace) -> None:
         graph.add_catalog(SQLiteCatalog(args.database), args.as_of)
     if args.command in {'deps', 'graph'}:
         definition = registry.get_etl(args.name)
-        direct = {read.dataset for read in definition.inputs.values()}
+        direct = {
+            request.dataset
+            for request in definition.inputs.values()
+            if isinstance(request, Read)
+        }
+        direct_external = {
+            request.dataset
+            for request in definition.inputs.values()
+            if isinstance(request, ExternalRead)
+        }
         transitive = set(graph.declared_uses(definition.name)) - direct
         transitive.update(
             ancestor for dataset in direct for ancestor in graph.ancestors(dataset)
         )
+        transitive_external = (
+                set(graph.declared_external_uses(definition.name)) - direct_external
+        )
         record: dict[str, object] = {
             'job': definition.name,
-            'direct': sorted(map(str, direct)),
-            'transitive': sorted(map(str, transitive)),
+            'direct': sorted(map(str, direct | direct_external)),
+            'transitive': sorted(map(str, transitive | transitive_external)),
             'outputs': sorted(map(str, definition.outputs)),
         }
         graph_nodes = set(definition.outputs)
@@ -218,6 +226,27 @@ def _lineage_command(args: argparse.Namespace) -> None:
             _print_record(record, args.format)
         else:
             _print_graph(edges, args.format, record)
+        return
+    if ':' in args.name:
+        external = ExternalDatasetId.parse(args.name)
+        if args.command != 'uses':
+            raise ValueError('external datasets support the uses command')
+        jobs = graph.external_consumers(external, registry)
+        downstream = {
+            output
+            for definition in registry.etls
+            if definition.name in jobs
+            for output in definition.outputs
+        }
+        record = {
+            'dataset': str(external),
+            'etl_jobs': list(jobs),
+            'reusable_functions': list(
+                graph.external_requirement_consumers(external, registry)
+            ),
+            'downstream_datasets': sorted(map(str, downstream)),
+        }
+        _print_record(record, args.format)
         return
     dataset = DatasetId.parse(args.name)
     if args.command == 'uses':

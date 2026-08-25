@@ -15,6 +15,7 @@ nav:
   - ETL jobs: etl-jobs.md
   - Testing safely: testing.md
   - Reusable requirements: requires.md
+  - External datasets: external-datasets.md
   - Lineage: lineage.md
   - File sources: files.md
   - SQL sources: sql.md
@@ -34,4 +35,4 @@ nav:
       - Migrating a source: tutorials/07-migrating-a-source.md
       - Optional credentials: tutorials/08-credentials.md
       - SAS7BDAT extension: tutorials/09-sas7bdat.md
-      - Remote SQL database extension: tutorials/10-databricks.md
+      - Remote SQL database extension: tutorials/10-sql-databases.md

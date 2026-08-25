@@ -6,7 +6,7 @@ from typing import Protocol
 import polars as pl
 
 from etlonomy.exceptions import MissingTestColumnError, MissingTestDatasetError
-from etlonomy.models import DatasetId, ExecutionContext, Read
+from etlonomy.models import DatasetId, ExecutionContext, ExternalRead, Read
 
 
 class DatasetProvider(Protocol):
@@ -14,6 +14,14 @@ class DatasetProvider(Protocol):
 
     def read(self, request: Read, context: ExecutionContext) -> pl.LazyFrame:
         """Resolve and return a logical dataset read request."""
+        ...
+
+
+class ExternalDatasetProvider(Protocol):
+    """Resolve datasets managed by a system outside Etlonomy."""
+
+    def read(self, request: ExternalRead, context: ExecutionContext) -> object:
+        """Resolve and return an external dataset read request."""
         ...
 
 

@@ -10,6 +10,7 @@ or a SQL database.
 - Build a small SQLite catalog that Etlonomy can read quickly
 - Return polars `LazyFrame` objects and request only the columns a job needs
 - Declare data used by `@etl` jobs and `@requires` helper functions
+- Track named external datasets without building their source library into Etlonomy
 - Test with supplied data that can never fall back to production
 - Inspect catalogs, generate dataset names, and ask lineage questions from the command line
 
@@ -22,6 +23,7 @@ or a SQL database.
   and [source dates](versioning.md)
 - **Connect data:** see [files](files.md), [SQL](sql.md), or [sqlalchemy connections](sqlalchemy.md)
 - **Test without production:** see [testing](testing.md)
+- **Use another data library:** see [external datasets](external-datasets.md)
 - **Move a dataset:** follow [migrating a source](tutorials/07-migrating-a-source.md)
 
 ```text

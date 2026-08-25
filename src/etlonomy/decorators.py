@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import ParamSpec, TypeVar, cast
 
 from etlonomy.exceptions import RegistryError
-from etlonomy.models import DatasetId, Read
+from etlonomy.models import DatasetId, DependencyRead
 from etlonomy.registry import EtlDefinition, RequirementDefinition, registry
 
 P = ParamSpec('P')
@@ -26,7 +26,7 @@ def _source(function: Callable[..., object]) -> tuple[Path | None, int | None]:
 
 
 def _validate_inputs(
-        function: Callable[..., object], inputs: Mapping[str, Read]
+        function: Callable[..., object], inputs: Mapping[str, DependencyRead]
 ) -> None:
     parameters = inspect.signature(function).parameters
     missing = sorted(set(inputs) - set(parameters))
@@ -41,7 +41,7 @@ def _validate_inputs(
 def etl(
         *,
         name: str,
-        inputs: Mapping[str, Read],
+        inputs: Mapping[str, DependencyRead],
         outputs: tuple[DatasetId, ...] = (),
         uses: tuple[Callable[..., object], ...] = (),
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
@@ -71,9 +71,7 @@ def etl(
 
 
 def requires(
-        *,
-        uses: tuple[Callable[..., object], ...] = (),
-        **inputs: Read,
+        *, uses: tuple[Callable[..., object], ...] = (), **inputs: DependencyRead
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """Declare datasets that an active runtime injects into a reusable function.
 

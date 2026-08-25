@@ -1,24 +1,25 @@
 """Execution runtime for registered ETL jobs and reusable requirements."""
 
+from __future__ import annotations
+
 from collections.abc import Mapping
 from contextvars import ContextVar, Token
+from types import MappingProxyType
 
-import polars as pl
-
-from etlonomy.exceptions import RegistryError
-from etlonomy.models import ExecutionContext, Read
-from etlonomy.providers import DatasetProvider
+from etlonomy.exceptions import ExternalDatasetProviderNotConfiguredError, RegistryError
+from etlonomy.models import DependencyRead, ExecutionContext, ExternalRead, Read
+from etlonomy.providers import DatasetProvider, ExternalDatasetProvider
 from etlonomy.registry import Registry, registry
 
-_ACTIVE_RUNTIME: ContextVar['Runtime | None'] = ContextVar(
+_ACTIVE_RUNTIME: ContextVar[Runtime | None] = ContextVar(
     'etlonomy_active_runtime', default=None
 )
-_ACTIVE_DEPENDENCIES: ContextVar[list[Read] | None] = ContextVar(
+_ACTIVE_DEPENDENCIES: ContextVar[list[DependencyRead] | None] = ContextVar(
     'etlonomy_active_dependencies', default=None
 )
 
 
-def get_active_runtime() -> 'Runtime':
+def get_active_runtime() -> Runtime:
     """Return the runtime currently executing an ETL.
 
     Raises:
@@ -42,29 +43,48 @@ class Runtime:
             provider: DatasetProvider,
             context: ExecutionContext,
             job_registry: Registry = registry,
+            external_providers: Mapping[str, ExternalDatasetProvider] | None = None,
     ) -> None:
-        """Create a runtime bound to a provider, context, and registry."""
+        """Create a runtime bound to dataset providers, context, and registry."""
         self.provider = provider
         self.context = context
         self.registry = job_registry
-        self._last_dependencies: ContextVar[tuple[Read, ...]] = ContextVar(
+        self.external_providers: Mapping[str, ExternalDatasetProvider] = (
+            MappingProxyType(dict(external_providers or {}))
+        )
+        self._last_dependencies: ContextVar[tuple[DependencyRead, ...]] = ContextVar(
             'etlonomy_last_dependencies', default=()
         )
 
     @property
-    def last_dependencies(self) -> tuple[Read, ...]:
+    def last_dependencies(self) -> tuple[DependencyRead, ...]:
         """Return reads resolved by the last successful job in this context."""
         return self._last_dependencies.get()
 
-    def resolve_inputs(self, inputs: Mapping[str, Read]) -> dict[str, pl.LazyFrame]:
-        """Resolve named read requests through this runtime's provider."""
-        resolved: dict[str, pl.LazyFrame] = {}
+    def resolve_inputs(
+            self, inputs: Mapping[str, DependencyRead]
+    ) -> dict[str, object]:
+        """Resolve named reads through catalog or external dataset providers."""
+        resolved: dict[str, object] = {}
         for name, request in inputs.items():
-            resolved[name] = self.provider.read(request, self.context)
+            if isinstance(request, Read):
+                resolved[name] = self.provider.read(request, self.context)
+            else:
+                resolved[name] = self._read_external(request)
             active_dependencies = _ACTIVE_DEPENDENCIES.get()
             if active_dependencies is not None:
                 active_dependencies.append(request)
         return resolved
+
+    def _read_external(self, request: ExternalRead) -> object:
+        try:
+            provider = self.external_providers[request.dataset.system]
+        except KeyError as error:
+            raise ExternalDatasetProviderNotConfiguredError(
+                f'no external dataset provider configured for system '
+                f'{request.dataset.system!r}'
+            ) from error
+        return provider.read(request, self.context)
 
     def run(self, name: str, **arguments: object) -> object:
         """Execute a registered ETL, injecting any undeclared call arguments.
@@ -72,10 +92,10 @@ class Runtime:
         Explicit arguments take precedence over declared dataset inputs.
         """
         definition = self.registry.get_etl(name)
-        dependencies: list[Read] = []
+        dependencies: list[DependencyRead] = []
         previous_dependencies = _ACTIVE_DEPENDENCIES.get()
-        dependency_token: Token[list[Read] | None] = _ACTIVE_DEPENDENCIES.set(
-            dependencies
+        dependency_token: Token[list[DependencyRead] | None] = (
+            _ACTIVE_DEPENDENCIES.set(dependencies)
         )
         runtime_token: Token[Runtime | None] = _ACTIVE_RUNTIME.set(self)
         successful = False
