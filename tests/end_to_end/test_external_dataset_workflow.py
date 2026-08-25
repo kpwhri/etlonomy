@@ -15,7 +15,7 @@ from etlonomy.models import (
     external_read,
     read,
 )
-from etlonomy.providers import TestDatasetProvider
+from etlonomy.providers import ExternalProviderBinding, TestDatasetProvider
 from etlonomy.registry import Registry
 from etlonomy.runtime import Runtime
 
@@ -28,9 +28,14 @@ class ParquetDataset:
         return pl.scan_parquet(self.path)
 
 
+@dataclass(frozen=True)
+class SourceView:
+    claims: ParquetDataset
+
+
 class FileDatasetProvider:
-    def __init__(self, claims: ParquetDataset):
-        self._resources = {'warehouse.claims': claims}
+    def __init__(self, source_view: SourceView):
+        self._resources = {'warehouse.claims': source_view.claims}
         self.requests: list[ExternalRead] = []
 
     def read(
@@ -60,11 +65,19 @@ def test_external_required_dataset_runs_and_appears_in_lineage(tmp_path: Path, m
         'unused_physical_column': ['old', 'old'],
     }).write_parquet(claims_path)
 
-    @requires(claims=claims_request)
+    @requires(
+        external_provider_bindings={
+            'files': ExternalProviderBinding('sv', FileDatasetProvider),
+        },
+        claims=claims_request,
+    )
     def attach_claims(
             members: pl.LazyFrame,
             claims: pl.LazyFrame,
+            *,
+            sv: SourceView | None = None,
     ) -> pl.LazyFrame:
+        del sv
         return members.join(claims, on='person_id', how='inner')
 
     members_request = read(cohort, 'person_id')
@@ -78,7 +91,8 @@ def test_external_required_dataset_runs_and_appears_in_lineage(tmp_path: Path, m
     def build_cohort_claims(members: pl.LazyFrame) -> pl.LazyFrame:
         return attach_claims(members)
 
-    external_provider = FileDatasetProvider(ParquetDataset(claims_path))
+    source_view = SourceView(ParquetDataset(claims_path))
+    external_provider = FileDatasetProvider(source_view)
     runtime = Runtime(
         provider=TestDatasetProvider({
             cohort: pl.DataFrame({'person_id': [1, 2]}),
@@ -97,6 +111,14 @@ def test_external_required_dataset_runs_and_appears_in_lineage(tmp_path: Path, m
         'diagnosis_code': ['I10'],
     }
     assert runtime.last_dependencies == (members_request, claims_request)
+    assert external_provider.requests == [claims_request]
+
+    portable_result = attach_claims(
+        pl.DataFrame({'person_id': [1, 2]}).lazy(),
+        sv=source_view,
+    ).collect()
+
+    assert portable_result['person_id'].to_list() == [1]
     assert external_provider.requests == [claims_request]
 
     test_members = pl.DataFrame({'person_id': [10, 20]}).lazy()

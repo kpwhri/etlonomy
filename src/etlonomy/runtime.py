@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from contextvars import ContextVar, Token
 from types import MappingProxyType
 
@@ -16,6 +17,11 @@ _ACTIVE_RUNTIME: ContextVar[Runtime | None] = ContextVar(
 )
 _ACTIVE_DEPENDENCIES: ContextVar[list[DependencyRead] | None] = ContextVar(
     'etlonomy_active_dependencies', default=None
+)
+_ACTIVE_EXTERNAL_PROVIDERS: ContextVar[
+    Mapping[str, ExternalDatasetProvider]
+] = ContextVar(
+    'etlonomy_active_external_providers', default=MappingProxyType({})
 )
 
 
@@ -34,6 +40,45 @@ def get_active_runtime() -> Runtime:
     return runtime
 
 
+@contextmanager
+def _external_provider_scope(
+        providers: Mapping[str, ExternalDatasetProvider],
+) -> Iterator[None]:
+    """Temporarily overlay call-bound external providers for nested requirements."""
+    active = dict(_ACTIVE_EXTERNAL_PROVIDERS.get())
+    active.update(providers)
+    token = _ACTIVE_EXTERNAL_PROVIDERS.set(MappingProxyType(active))
+    try:
+        yield
+    finally:
+        _ACTIVE_EXTERNAL_PROVIDERS.reset(token)
+
+
+def _resolve_requirement_inputs(inputs: Mapping[str, DependencyRead]) -> dict[str, object]:
+    """Resolve reusable-function inputs through call bindings or a runtime."""
+    runtime = _ACTIVE_RUNTIME.get()
+    if runtime is not None:
+        return runtime.resolve_inputs(inputs)
+
+    providers = _ACTIVE_EXTERNAL_PROVIDERS.get()
+    resolved: dict[str, object] = {}
+    for name, request in inputs.items():
+        if isinstance(request, Read):
+            raise RegistryError(
+                'a requires-decorated function needs an active Runtime or '
+                'explicit inputs for catalog datasets'
+            )
+        try:
+            provider = providers[request.dataset.system]
+        except KeyError as error:
+            raise RegistryError(
+                'a requires-decorated function needs an active Runtime, a bound '
+                'external provider, or explicit inputs'
+            ) from error
+        resolved[name] = provider.read(request, ExecutionContext())
+    return resolved
+
+
 class Runtime:
     """Execute registered ETL jobs with a dataset provider and fixed context."""
 
@@ -44,7 +89,7 @@ class Runtime:
             context: ExecutionContext,
             job_registry: Registry = registry,
             external_providers: Mapping[str, ExternalDatasetProvider] | None = None,
-    ) -> None:
+    ):
         """Create a runtime bound to dataset providers, context, and registry."""
         self.provider = provider
         self.context = context
@@ -78,15 +123,18 @@ class Runtime:
 
     def _read_external(self, request: ExternalRead) -> object:
         try:
-            provider = self.external_providers[request.dataset.system]
+            provider = _ACTIVE_EXTERNAL_PROVIDERS.get()[request.dataset.system]
         except KeyError as error:
-            raise ExternalDatasetProviderNotConfiguredError(
-                f'no external dataset provider configured for system '
-                f'{request.dataset.system!r}'
-            ) from error
+            try:
+                provider = self.external_providers[request.dataset.system]
+            except KeyError:
+                raise ExternalDatasetProviderNotConfiguredError(
+                    f'no external dataset provider configured for system '
+                    f'{request.dataset.system!r}'
+                ) from error
         return provider.read(request, self.context)
 
-    def run(self, name: str, **arguments: object) -> object:
+    def run(self, name: str, **arguments):
         """Execute a registered ETL, injecting any undeclared call arguments.
 
         Explicit arguments take precedence over declared dataset inputs.
@@ -101,13 +149,11 @@ class Runtime:
         successful = False
         try:
             injected: dict[str, object] = dict(
-                self.resolve_inputs(
-                    {
-                        key: request
-                        for key, request in definition.inputs.items()
-                        if key not in arguments
-                    }
-                )
+                self.resolve_inputs({
+                    key: request
+                    for key, request in definition.inputs.items()
+                    if key not in arguments
+                })
             )
             injected.update(arguments)
             result = definition.function(**injected)

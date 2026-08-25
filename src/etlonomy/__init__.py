@@ -52,6 +52,7 @@ from etlonomy.models import (
 from etlonomy.providers import (
     DatasetProvider,
     ExternalDatasetProvider,
+    ExternalProviderBinding,
     TestDatasetProvider,
 )
 from etlonomy.registry import EtlDefinition, Registry, RequirementDefinition, registry
@@ -84,6 +85,7 @@ __all__ = [
     'ExternalDatasetId',
     'ExternalDatasetProvider',
     'ExternalDatasetProviderNotConfiguredError',
+    'ExternalProviderBinding',
     'ExternalRead',
     'LineageGraph',
     'KeePassCredentialProvider',

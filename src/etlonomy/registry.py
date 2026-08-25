@@ -1,12 +1,13 @@
 """Registration metadata for ETL jobs and reusable requirements."""
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
 
 from etlonomy.exceptions import RegistryError
 from etlonomy.models import DatasetId, DependencyRead
+from etlonomy.providers import ExternalProviderBinding
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,7 +22,7 @@ class EtlDefinition:
     source_line: int | None
     uses: tuple[Callable[..., object], ...] = ()
 
-    def __post_init__(self) -> None:
+    def __post_init__(self):
         """Protect registered inputs and sequences from later mutation."""
         object.__setattr__(self, 'inputs', MappingProxyType(dict(self.inputs)))
         object.__setattr__(self, 'outputs', tuple(self.outputs))
@@ -37,29 +38,37 @@ class RequirementDefinition:
     source_file: Path | None
     source_line: int | None
     uses: tuple[Callable[..., object], ...] = ()
+    external_provider_bindings: Mapping[str, ExternalProviderBinding] = field(
+        default_factory=dict
+    )
 
-    def __post_init__(self) -> None:
+    def __post_init__(self):
         """Protect registered requirement metadata from later mutation."""
         object.__setattr__(self, 'inputs', MappingProxyType(dict(self.inputs)))
         object.__setattr__(self, 'uses', tuple(self.uses))
+        object.__setattr__(
+            self,
+            'external_provider_bindings',
+            MappingProxyType(dict(self.external_provider_bindings)),
+        )
 
 
 class Registry:
     """Store ETL and reusable-function definitions for execution and inspection."""
 
-    def __init__(self) -> None:
+    def __init__(self):
         """Create an empty ETL and requirement registry."""
         self._etls: dict[str, EtlDefinition] = {}
         self._requirements: dict[Callable[..., object], RequirementDefinition] = {}
 
-    def register_etl(self, definition: EtlDefinition) -> None:
+    def register_etl(self, definition: EtlDefinition):
         """Register an ETL definition, rejecting duplicate job names."""
         if definition.name in self._etls:
             raise RegistryError(f'ETL job {definition.name!r} is already registered')
         self._validate_uses(definition.uses, f'ETL job {definition.name!r}')
         self._etls[definition.name] = definition
 
-    def register_requirement(self, definition: RequirementDefinition) -> None:
+    def register_requirement(self, definition: RequirementDefinition):
         """Register dependency metadata for one reusable function."""
         if definition.function in self._requirements:
             function_name = definition.function.__qualname__
@@ -78,9 +87,7 @@ class Registry:
             self._requirements.pop(definition.function)
             raise
 
-    def _validate_uses(
-            self, uses: tuple[Callable[..., object], ...], owner: str
-    ) -> None:
+    def _validate_uses(self, uses: tuple[Callable[..., object], ...], owner: str):
         if len(set(uses)) != len(uses):
             raise RegistryError(f'{owner} contains duplicate uses declarations')
         for function in uses:
@@ -92,11 +99,11 @@ class Registry:
                     f'{owner} uses {name!r}, which is not registered with requires'
                 )
 
-    def _validate_requirement_cycles(self) -> None:
+    def _validate_requirement_cycles(self):
         visiting: set[Callable[..., object]] = set()
         visited: set[Callable[..., object]] = set()
 
-        def visit(function: Callable[..., object]) -> None:
+        def visit(function: Callable[..., object]):
             if function in visiting:
                 raise RegistryError(
                     f'reusable-function uses cycle includes {function.__qualname__!r}'

@@ -18,6 +18,7 @@ so the storage change does not force you to rewrite the transformation.
 - Maps old physical column names to clear logical names when needed
 - Records datasets used by `@etl` jobs and `@requires` helper functions
 - Tracks named datasets that are loaded by another Python package
+- Lets portable helpers build an external provider from a normal function argument
 - Lets tests supply in-memory data without any fallback to production
 - Includes commands for building, checking, inspecting, and comparing catalogs
 

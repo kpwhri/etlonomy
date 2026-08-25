@@ -8,7 +8,7 @@ import pytest
 from etlonomy.decorators import _source, etl, requires
 from etlonomy.exceptions import RegistryError
 from etlonomy.models import DatasetId, ExecutionContext, read
-from etlonomy.providers import TestDatasetProvider
+from etlonomy.providers import ExternalProviderBinding, TestDatasetProvider
 from etlonomy.registry import EtlDefinition, Registry, RequirementDefinition
 from etlonomy.runtime import Runtime
 
@@ -255,3 +255,18 @@ def test_registry_definitions_copy_and_protect_declared_metadata():
     assert requirement.inputs == {'frame': request}
     with pytest.raises(TypeError):
         requirement.inputs['other'] = request  # type: ignore[index]
+
+    binding = ExternalProviderBinding('sv', lambda source: source)  # type: ignore[arg-type,return-value]
+    original_bindings = {'files': binding}
+    bound_requirement = RequirementDefinition(
+        job,
+        {'frame': request},
+        None,
+        None,
+        external_provider_bindings=original_bindings,
+    )
+    original_bindings.clear()
+
+    assert bound_requirement.external_provider_bindings == {'files': binding}
+    with pytest.raises(TypeError):
+        bound_requirement.external_provider_bindings['other'] = binding  # type: ignore[index]

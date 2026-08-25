@@ -41,6 +41,12 @@ right adapter. A column without a mapping keeps its own name.
 
 The ETL function never needs its own CSV-versus-SQL switch.
 
+An `ExternalDatasetProvider` handles reads owned by another Python API. A normal runtime
+registers those providers by an external system name. A portable `@requires` function can
+instead create one from a supplied argument with `ExternalProviderBinding`. Etlonomy
+keeps that provider in a call-local scope so nested helpers see it without sharing it
+with concurrent calls. See the [external dataset guide](external-datasets.md#bind-a-provider-from-a-function-argument).
+
 ## Adapters read each source type
 
 Adapters know the mechanics specific to their technology:

@@ -112,6 +112,40 @@ If another Python library owns the requested dataset, use an external read inste
 helper. The [external dataset guide](external-datasets.md) shows how `claims=claims_df` still bypasses the external
 provider during a test.
 
+## Accept an external site's source view
+
+Sometimes a reusable function is distributed to a site that has a source-view object but
+does not construct an Etlonomy runtime. An `ExternalProviderBinding` can build the
+function's external provider from an ordinary argument such as `sv`:
+
+```python
+@etlonomy.requires(
+    external_provider_bindings={
+        'company_data': etlonomy.ExternalProviderBinding(
+            argument='sv',
+            factory=CompanyDataProvider,
+        ),
+    },
+    claims=etlonomy.external_read(CUSTOM_CLAIMS, 'person_id'),
+)
+def attach_external_claims(
+        cohort: pl.LazyFrame,
+        claims: pl.LazyFrame,
+        *,
+        sv: CompanyWarehouse | None = None,
+) -> pl.LazyFrame:
+    del sv
+    return claims.join(cohort, on='person_id', how='inner')
+
+
+result = attach_external_claims(cohort, sv=site_source_view)
+```
+
+The call-bound provider is inherited by nested `@requires` helpers. Explicit dataset
+arguments still take precedence, and omitting `sv` still allows an active runtime to
+supply its registered provider. See [external provider bindings](external-datasets.md#bind-a-provider-from-a-function-argument)
+for the complete provider contract and resolution order.
+
 ## Choose the right decorator
 
 - Use `@etlonomy.etl` for a top-level named job with declared outputs

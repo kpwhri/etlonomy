@@ -8,7 +8,8 @@ from pathlib import Path
 from typing import ParamSpec, TypeVar, cast
 
 from etlonomy.exceptions import RegistryError
-from etlonomy.models import DatasetId, DependencyRead
+from etlonomy.models import DatasetId, DependencyRead, ExternalDatasetId
+from etlonomy.providers import ExternalProviderBinding
 from etlonomy.registry import EtlDefinition, RequirementDefinition, registry
 
 P = ParamSpec('P')
@@ -71,18 +72,59 @@ def etl(
 
 
 def requires(
-        *, uses: tuple[Callable[..., object], ...] = (), **inputs: DependencyRead
+        *,
+        uses: tuple[Callable[..., object], ...] = (),
+        external_provider_bindings: Mapping[str, ExternalProviderBinding] | None = None,
+        **inputs: DependencyRead,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
-    """Declare datasets that an active runtime injects into a reusable function.
+    """Declare datasets injected into a reusable function.
 
-    Explicitly passed arguments always take precedence over runtime resolution.
+    Explicit inputs take precedence over call-bound and runtime providers. An external
+    provider binding can resolve its system without an active runtime.
     """
+    bindings = dict(external_provider_bindings or {})
+    for system, binding in bindings.items():
+        if not isinstance(system, str):
+            raise RegistryError('external provider binding systems must be strings')
+        try:
+            ExternalDatasetId(system, 'binding-validation')
+        except ValueError as error:
+            raise RegistryError(
+                f'invalid external provider binding system: {system!r}'
+            ) from error
+        if not isinstance(binding, ExternalProviderBinding):
+            raise RegistryError(
+                'external provider bindings must be ExternalProviderBinding values'
+            )
 
     def decorate(function: Callable[P, R]) -> Callable[P, R]:
         if getattr(function, '__etlonomy_etl__', False):
             raise RegistryError('a function cannot use both etl and requires')
         _validate_inputs(function, inputs)
         signature = inspect.signature(function)
+        parameters = signature.parameters
+        missing_arguments = sorted(
+            {
+                binding.argument
+                for binding in bindings.values()
+                if binding.argument not in parameters
+            }
+        )
+        if missing_arguments:
+            names = ', '.join(missing_arguments)
+            raise RegistryError(
+                f'external provider binding arguments are not function parameters '
+                f'for {function.__qualname__}: {names}'
+            )
+        conflicting_arguments = sorted(
+            {binding.argument for binding in bindings.values()} & set(inputs)
+        )
+        if conflicting_arguments:
+            names = ', '.join(conflicting_arguments)
+            raise RegistryError(
+                f'external provider binding arguments cannot also be declared '
+                f'inputs for {function.__qualname__}: {names}'
+            )
 
         @wraps(function)
         def wrapped(*args: P.args, **kwargs: P.kwargs) -> R:
@@ -92,12 +134,20 @@ def requires(
                 for name, request in inputs.items()
                 if name not in bound.arguments
             }
-            if unresolved:
-                from etlonomy.runtime import get_active_runtime
+            providers = {
+                system: binding.create(bound.arguments[binding.argument])
+                for system, binding in bindings.items()
+                if binding.argument in bound.arguments
+            }
+            from etlonomy.runtime import (
+                _external_provider_scope,
+                _resolve_requirement_inputs,
+            )
 
-                runtime = get_active_runtime()
-                kwargs.update(runtime.resolve_inputs(unresolved))
-            return function(*args, **kwargs)
+            with _external_provider_scope(providers):
+                if unresolved:
+                    kwargs.update(_resolve_requirement_inputs(unresolved))
+                return function(*args, **kwargs)
 
         object.__setattr__(wrapped, '__etlonomy_requirement__', True)
         source_file, source_line = _source(function)
@@ -108,6 +158,7 @@ def requires(
                 source_file=source_file,
                 source_line=source_line,
                 uses=tuple(uses),
+                external_provider_bindings=bindings,
             )
         )
         return wrapped

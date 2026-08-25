@@ -52,10 +52,10 @@ def test_documented_environment_sources_match_executed_integration_examples():
 def test_external_dataset_guide_matches_the_executable_public_api():
     content = (DOCS_DIRECTORY / 'external-datasets.md').read_text(encoding='utf8')
     workflow = (
-        PROJECT_DIRECTORY
-        / 'tests'
-        / 'end_to_end'
-        / 'test_external_dataset_workflow.py'
+            PROJECT_DIRECTORY
+            / 'tests'
+            / 'end_to_end'
+            / 'test_external_dataset_workflow.py'
     ).read_text(encoding='utf8')
 
     examples = (
@@ -69,24 +69,30 @@ def test_external_dataset_guide_matches_the_executable_public_api():
         'Return one predictable type',
         'Use the requested columns',
         'Decide how context works',
+        'external_provider_bindings={',
+        "argument='sv'",
+        'factory=CompanyDataProvider',
+        'find_portable_claims(cohort, sv=site_source_view)',
     )
     for example in examples:
         assert example in content
 
     assert "ExternalDatasetId('files', 'warehouse.claims')" in workflow
     assert "external_providers={" in workflow
+    assert "ExternalProviderBinding('sv', FileDatasetProvider)" in workflow
+    assert 'sv=source_view' in workflow
     assert "declared_uses('cohort.custom_claims')" in workflow
 
 
 def test_custom_provider_tutorial_matches_the_executed_end_to_end_workflow():
     tutorial = (
-        DOCS_DIRECTORY / 'tutorials' / '11-custom-provider.md'
+            DOCS_DIRECTORY / 'tutorials' / '11-custom-provider.md'
     ).read_text(encoding='utf8')
     workflow = (
-        PROJECT_DIRECTORY
-        / 'tests'
-        / 'end_to_end'
-        / 'test_external_dataset_workflow.py'
+            PROJECT_DIRECTORY
+            / 'tests'
+            / 'end_to_end'
+            / 'test_external_dataset_workflow.py'
     ).read_text(encoding='utf8')
     examples = (
         "ExternalDatasetId('files', 'warehouse.claims')",

@@ -11,6 +11,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - External providers for custom data loading
 - Improved documentation, including material theme
+- Call-scoped external provider bindings for `@requires` functions
 
 ## [0.1.0]
 
