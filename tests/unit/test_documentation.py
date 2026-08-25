@@ -59,21 +59,63 @@ def test_external_dataset_guide_matches_the_executable_public_api():
     ).read_text(encoding='utf8')
 
     examples = (
-        'SV_CLAIMS = etlonomy.ExternalDatasetId(',
-        "system='vdwcore'",
-        "name='sv.vdw_claims'",
+        'CUSTOM_CLAIMS = etlonomy.ExternalDatasetId(',
+        "system='company_data'",
+        "name='warehouse.claims'",
         'claims=etlonomy.external_read(',
         'external_providers={',
         "claims=claims_df",
-        "declared_external_uses('cohort.build')",
-        'FileExternalDatasetProvider(source_view)',
+        "declared_uses('cohort.build')",
+        'Return one predictable type',
+        'Use the requested columns',
+        'Decide how context works',
     )
     for example in examples:
         assert example in content
 
-    assert "ExternalDatasetId('files', 'sv.claims')" in workflow
+    assert "ExternalDatasetId('files', 'warehouse.claims')" in workflow
     assert "external_providers={" in workflow
-    assert "declared_external_uses('cohort.external_claims')" in workflow
+    assert "declared_uses('cohort.custom_claims')" in workflow
+
+
+def test_custom_provider_tutorial_matches_the_executed_end_to_end_workflow():
+    tutorial = (
+        DOCS_DIRECTORY / 'tutorials' / '11-custom-provider.md'
+    ).read_text(encoding='utf8')
+    workflow = (
+        PROJECT_DIRECTORY
+        / 'tests'
+        / 'end_to_end'
+        / 'test_external_dataset_workflow.py'
+    ).read_text(encoding='utf8')
+    examples = (
+        "ExternalDatasetId('files', 'warehouse.claims')",
+        'class ParquetDataset:',
+        'class FileDatasetProvider:',
+        "'unused_physical_column': ['old', 'old']",
+        'uses=(attach_claims,)',
+        "runtime.run('cohort.custom_claims')",
+        'claims=test_claims',
+        "graph.declared_uses('cohort.custom_claims')",
+        'graph.descendants(CUSTOM_CLAIMS)',
+    )
+
+    for example in examples:
+        assert example in tutorial
+
+    executed_examples = (
+        "ExternalDatasetId('files', 'warehouse.claims')",
+        'class ParquetDataset:',
+        'class FileDatasetProvider:',
+        "'unused_physical_column': ['old', 'old']",
+        'uses=(attach_claims,)',
+        "runtime.run('cohort.custom_claims')",
+        'claims=test_claims',
+        "declared.declared_uses('cohort.custom_claims')",
+        'declared.descendants(external_claims)',
+    )
+    for example in executed_examples:
+        assert example in workflow
 
 
 def test_tutorial_home_indexes_every_tutorial_in_numbered_order():

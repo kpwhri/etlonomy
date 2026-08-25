@@ -2,28 +2,50 @@ site_name: Etlonomy
 site_description: Define data sources and dependencies for Python ETL jobs
 docs_dir: docs
 strict: true
+theme:
+  name: material
+  features:
+    # sections groups related pages in the left sidebar
+    - navigation.sections
+
+    # path shows where the current page sits in the documentation
+    - navigation.path
+
+    # top adds a small return-to-top button on long pages
+    - navigation.top
+
+    # these make the search box more helpful
+    - search.suggest
+    - search.highlight
+
+    # readers can copy examples without selecting the text
+    - content.code.copy
+  palette:
+    - scheme: slate
+    - primary: blue grey
+    - accent: cyan
+    - toggle:
+    - icon: material/weather-sunny
+    - name: Switch to light mode
+
+    - scheme: default
+    - primary: blue grey
+    - accent: teal
+    - toggle:
+    - icon: material/weather-night
+    - name: Switch to dark mode
 nav:
-  - Home: index.md
-  - Getting started: getting-started.md
-  - Implementation checklist: implementation-checklist.md
-  - Mental model: concepts.md
-  - Logical datasets: datasets.md
-  - TOML manifests: manifests.md
-  - Versioning: versioning.md
-  - Catalog: catalog.md
-  - Environment settings: environments.md
-  - ETL jobs: etl-jobs.md
-  - Testing safely: testing.md
-  - Reusable requirements: requires.md
-  - External datasets: external-datasets.md
-  - Lineage: lineage.md
-  - File sources: files.md
-  - SQL sources: sql.md
-  - Credentials: credentials.md
-  - Database connections: sqlalchemy.md
-  - CLI reference: cli.md
-  - Architecture: architecture.md
-  - Contributing: contributing.md
+  - Start Here:
+    - Home: index.md
+    - Getting started: getting-started.md
+    - Implementation checklist: implementation-checklist.md
+  - Concepts:
+    - Main Ideas: concepts.md
+    - Logical datasets: datasets.md
+    - TOML manifests: manifests.md
+    - Versioning: versioning.md
+    - Catalog: catalog.md
+    - Architecture: architecture.md
   - Tutorials:
       - Tutorial home: tutorials/index.md
       - First project: tutorials/01-first-project.md
@@ -36,3 +58,18 @@ nav:
       - Optional credentials: tutorials/08-credentials.md
       - SAS7BDAT extension: tutorials/09-sas7bdat.md
       - Remote SQL database extension: tutorials/10-sql-databases.md
+      - Custom provider extension: tutorials/11-custom-provider.md
+  - Writing ETL Code:
+    - ETL jobs: etl-jobs.md
+    - Reusable Functions: requires.md
+    - Custom Providers: external-datasets.md
+    - Testing safely: testing.md
+    - Lineage: lineage.md
+  - Connecting Data:
+    - File sources: files.md
+    - SQL sources: sql.md
+    - Database Connections: sqlalchemy.md
+    - Credentials: credentials.md
+    - Environment settings: environments.md
+  - Contributing: contributing.md
+  - CLI reference: cli.md

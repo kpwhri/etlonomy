@@ -1,49 +1,59 @@
-# Use data managed by another Python library
+# Load a dataset through your own Python provider
 
-Most Etlonomy datasets belong in the catalog. The catalog gives them a stable name, selects the correct dated source,
-and returns a polars `LazyFrame`.
+Most datasets can be loaded by Etlonomy's built-in CSV, Parquet, SAS, or sqlalchemy
+readers. Sometimes your organization already has a Python library that knows how to
+load a dataset. Replacing that library would create extra work and could remove useful
+behavior.
 
-Sometimes another Python library already knows how to find and read a dataset. For example, an application might provide
-a source-view object with attributes such as `sv.claims`. Rebuilding that library inside Etlonomy would add work without
-helping the ETL job.
+An `ExternalDatasetId` lets you keep using that loader. In this name, **external means
+external to Etlonomy's built-in readers**. The data can still be an ordinary internal
+dataset owned by your organization.
 
-An external dataset lets the two libraries share the responsibility:
+Once it is declared, the dataset behaves like every other dataset in lineage:
 
-- Etlonomy records which named dataset the function needs
-- Your provider knows how to obtain that dataset
-- The function receives the data through an ordinary argument
-- A test can pass that argument directly and avoid the provider
+- `uses()` reports it
+- `consumers()` finds jobs that use it
+- `parents()` and `ancestors()` include it when it feeds an output
+- `children()` and `descendants()` show what depends on it
+- `etlonomy uses` and `etlonomy lineage` accept its name
 
-## Name the external dataset
+The only special part is loading. Etlonomy needs your provider because it does not know
+how to call the other library.
 
-First, give the external dataset a stable name:
+## Decide whether you need a custom provider
+
+Use a normal `DatasetId` when Etlonomy should read the physical source described in a
+TOML manifest. This gives you catalog versions, date-based source selection, shared
+roots, and shared sqlalchemy connections.
+
+Use an `ExternalDatasetId` when another Python API should perform the read. For example,
+your organization may have an object such as `warehouse.claims` with its own `load()`
+method.
 
 ```python
 import etlonomy
 
-MY_CLAIMS = etlonomy.ExternalDatasetId(
-    # system selects the provider registered with the runtime
-    system='vdwcore',
-    # name identifies the resource that people should see in lineage
-    name='accessor.vdw_claims',
+CUSTOM_CLAIMS = etlonomy.ExternalDatasetId(
+    # system chooses one provider from Runtime.external_providers
+    system='company_data',
+    # name identifies the resource inside that provider
+    name='warehouse.claims',
 )
 ```
 
-The complete identity is `vdwcore:accessor.vdw_claims`. The Python object used in production does not have to be stored in a
-variable named `accessor`. The name is a stable label for people reading the dependency graph.
+The complete name is `company_data:warehouse.claims`. Use a stable, readable name because
+people will see it in logs, command output, and lineage graphs. Do not put a password,
+token, or connection string in the name.
 
-Use a normal catalog `DatasetId` when Etlonomy should manage versions and physical locations. Use
-`ExternalDatasetId` when another library owns those details and Etlonomy only needs resolution and lineage.
+## Declare the columns your function needs
 
-## Request the columns the function needs
-
-Declare the external input with the same argument name used by the function:
+Use `external_read()` in the same place where you would normally use `read()`:
 
 ```python
 @etlonomy.requires(
     claims=etlonomy.external_read(
-        MY_CLAIMS,
-        # a short column list documents the part of the external table we depend on
+        CUSTOM_CLAIMS,
+        # naming only the needed columns makes the dependency easier to understand
         'person_id',
         'diagnosis_code',
     ),
@@ -56,71 +66,95 @@ def find_claims(
     return claims.join(cohort, on='person_id', how='inner')
 ```
 
-When `find_claims(cohort)` runs inside `Runtime.run()`, Etlonomy asks the `vdwcore` external provider for
-`sv.vdw_claims`. The provider receives the requested columns and decides how to apply them.
+During `Runtime.run()`, Etlonomy sends this request to the provider registered as
+`company_data`. It also records `company_data:warehouse.claims` as a normal dataset use.
 
-## Keep the provider in your project
+## Write a small provider in your application
 
-Etlonomy defines the `ExternalDatasetProvider` protocol but does not include an implementation. The provider belongs in
-your application or in a separate integration package because it knows how your source object works.
-
-Here is a small provider for an attribute-based source view:
+Etlonomy supplies the `ExternalDatasetProvider` interface, but your application supplies
+the implementation. That class is the bridge between a stable Etlonomy name and the
+library that already knows how to read the data.
 
 ```python
-class SourceViewProvider:
-    """Read external datasets from an application-owned source view."""
+class CompanyDataProvider:
+    """Read the company datasets that this application is allowed to use."""
 
-    def __init__(self, source_view: object) -> None:
-        """Use the source view supplied by the application."""
-        self._source_view = source_view
+    def __init__(self, warehouse: CompanyWarehouse) -> None:
+        """Use the warehouse object chosen by the application."""
+        self._resources = {
+            'warehouse.claims': warehouse.claims,
+            'warehouse.providers': warehouse.providers,
+        }
 
     def read(
             self,
             request: etlonomy.ExternalRead,
             context: etlonomy.ExecutionContext,
     ) -> pl.LazyFrame:
-        """Resolve one external resource and apply its requested projection."""
+        """Load one named resource and return the columns that were requested."""
         del context
-
-        resources = {
-            'accessor.vdw_claims': self._source_view.vdw_claims,
-        }
-        return resources[request.dataset.name].select(request.columns)
+        resource = self._resources[request.dataset.name]
+        return resource.load().select(list(request.columns))
 ```
 
-An explicit resource table is safer than treating every external string as unrestricted Python attribute access. The
-provider can also rename columns, translate errors, or collect a remote query into a `polars` object when that is part
-of the application's contract.
+The explicit `_resources` dictionary is useful. It documents what the application can
+load and prevents a misspelled name from reaching an unrelated Python attribute. It is
+safer than passing the name to `eval()` or unrestricted `getattr()`.
 
-## Supply any source-view object
+## Follow a clear provider contract
 
-The application chooses the real object when it builds the runtime:
+The Python interface intentionally returns `object`. Etlonomy does this because another
+library may return a polars frame, a lazy query, or its own table object. The freedom is
+useful, but your integration still needs a simple agreement.
+
+For each provider, write down and test these decisions:
+
+- **Return one predictable type.** If production returns a `pl.LazyFrame`, tests should
+  normally supply a `pl.LazyFrame` too. A test that uses a very different object may miss
+  a real compatibility problem.
+- **Use the requested columns.** Apply `request.columns` before returning when the source
+  supports projection. If the source cannot do that, explain the limitation in the
+  provider's documentation.
+- **Use an explicit resource list.** Report an unknown resource clearly instead of
+  silently choosing another table.
+- **Translate confusing errors.** A provider can catch a library-specific lookup or
+  connection error and raise `DatasetProviderError` with the stable dataset name.
+- **Decide how context works.** The provider receives `ExecutionContext`. It may use the
+  environment or date, or it may ignore them. Make that choice clear instead of letting
+  it happen by accident.
+- **Keep setup outside Etlonomy.** The application may pass a custom source object,
+  session, or client into the provider. Etlonomy does not import a default object or open
+  a connection on its own.
+
+Etlonomy cannot enforce column projection or the return type because it does not own the
+other library. These checks belong in the provider's tests.
+
+## Add the provider to the runtime
+
+The `system` part of the dataset name selects the provider:
 
 ```python
-from infrastructure import accessor
-
 runtime = etlonomy.Runtime(
     provider=catalog_provider,
-    context=execution_context,
+    context=etlonomy.ExecutionContext(environment='prod'),
     external_providers={
-        # this object may be replaced with a site-specific or locally configured sv
-        'vdwcore': SourceViewProvider(source_view=accessor),
+        # company_data matches ExternalDatasetId(system='company_data', ...)
+        'company_data': CompanyDataProvider(warehouse=my_warehouse),
     },
 )
 ```
 
-To use a custom source view, construct the same provider with another object:
+You can supply any warehouse object when the application starts. This is how a developer
+can use a local or manually configured source without changing the ETL function.
 
-```python
-custom_provider = SourceViewProvider(source_view=my_accessor)
-```
+If no provider is configured for `company_data`, Etlonomy raises
+`ExternalDatasetProviderNotConfiguredError`. It never guesses which library or production
+connection it should use.
 
-Etlonomy never imports `infrastructure` or `accessor` on its own. This keeps connection setup in the application and
-prevents a unit test from opening a production connection by accident.
+## Pass data directly in a focused test
 
-## Pass test data directly
-
-For a focused function test, do not construct a runtime or external provider. Supply the named argument:
+A focused function test usually does not need a runtime. Pass the dependency by position
+or keyword just as you would for an ordinary Python function:
 
 ```python
 claims_df = pl.DataFrame({
@@ -131,68 +165,49 @@ claims_df = pl.DataFrame({
 
 result = find_claims(
     cohort_df.lazy(),
-    # an explicit value prevents all external resolution
+    # supplying claims means that no provider is called
     claims=claims_df,
 )
 ```
 
-Etlonomy passes an explicit argument through unchanged. It does not select columns from it, rename it, or validate its
-type. This is normal Python argument behavior and lets a test include supporting columns when necessary.
-
-The behavior is different when a provider performs the read:
+Etlonomy passes an explicit argument through unchanged. It does not select columns,
+rename the object, or check its type. This is deliberate: the caller supplied the value,
+so normal Python argument behavior applies.
 
 | How the value arrives       | Who limits the columns?               |
 |-----------------------------|---------------------------------------|
 | `CatalogDatasetProvider`    | The catalog adapter                   |
 | `TestDatasetProvider`       | `TestDatasetProvider`                 |
-| `ExternalDatasetProvider`   | The external provider                 |
+| `ExternalDatasetProvider`   | Your external provider                |
 | Explicit `claims=claims_df` | Nobody; the value is passed unchanged |
 
-If a test needs to reproduce production projection exactly, select the columns in the test before passing the frame.
+For a full runtime test, construct a small provider that reads temporary CSV or Parquet
+files. The [custom-provider tutorial](tutorials/11-custom-provider.md) builds that example
+one step at a time without using any organization-specific library.
 
-## Test the complete runtime without the real library
+## Ask the same lineage questions
 
-A complete runtime test should exercise external resolution. It can use a tiny test-only source object whose loader
-reads a temporary CSV or Parquet file:
-
-```python
-source_view = TestSourceView(
-    claims=FileDataset(claims_path, pl.scan_parquet),
-    providers=FileDataset(providers_path, pl.scan_csv),
-)
-
-runtime = etlonomy.Runtime(
-    provider=test_provider,
-    context=etlonomy.ExecutionContext(environment='test'),
-    external_providers={
-        'files': FileExternalDatasetProvider(source_view),
-    },
-)
-```
-
-This checks the Etlonomy routing boundary without requiring VDWCore, LazyBear, a network, or credentials.
-
-## Inspect external lineage
-
-External datasets have separate query methods so existing catalog lineage continues to return only `DatasetId`
-objects:
+External and catalog-loaded datasets use the same main query methods:
 
 ```python
 graph = etlonomy.LineageGraph()
 graph.add_registry(etlonomy.registry)
 
-print(graph.declared_external_uses('cohort.build'))
-print(graph.external_consumers(MY_CLAIMS))
-print(graph.external_requirement_consumers(MY_CLAIMS))
+print(graph.declared_uses('cohort.build'))
+print(graph.consumers(CUSTOM_CLAIMS))
+print(graph.requirement_consumers(CUSTOM_CLAIMS))
+print(graph.descendants(CUSTOM_CLAIMS))
 ```
 
-The command line accepts the namespaced identity too:
+The older `external_uses()`, `external_consumers()`, and related methods remain available
+when code wants only `ExternalDatasetId` results. They are compatibility helpers, not a
+separate or less complete lineage system.
+
+The command line works the same way:
 
 ```console
-etlonomy uses vdwcore:accessor.vdw_claims --module claims_demo.jobs --format json
+etlonomy uses company_data:warehouse.claims --module claims_demo.jobs --format json
+etlonomy lineage company_data:warehouse.claims --module claims_demo.jobs --format json
 ```
-
-The graph shows `vdwcore:accessor.vdw_claims`, the reusable function that requests it, and each ETL job that lists that
-function under `uses`.
 
 Previous: [reusable requirements](requires.md) · Next: [trace lineage](lineage.md)

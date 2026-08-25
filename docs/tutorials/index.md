@@ -47,8 +47,10 @@ claims-demo/
 ## Optional extensions
 
 - [Extension A: SAS7BDAT](09-sas7bdat.md) maps older column names and explains why SAS reading may be eager
-- [Extension B: a remote SQL database](10-sql-databases.md) compares SQL Server, Oracle, and Databricks-style sqlalchemy
+- [Extension B: A Remote SQL Database](10-sql-databases.md) compares SQL Server, Oracle, and Databricks-style sqlalchemy
   connections without adding database-specific ETL code.
+- [Extension C: A Custom Provider](11-custom-provider.md) loads a normal internal dataset through another Python API
+  while keeping the dataset in ordinary uses and lineage results
 
 ## How to study each lesson
 

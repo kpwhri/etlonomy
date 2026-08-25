@@ -282,6 +282,7 @@ def test_cli_traces_declared_reusable_function_uses(capsys):
 def test_cli_reports_external_dependencies_and_consumers(capsys):
     members = DatasetId('CLI', 'EXTERNAL_MEMBERS')
     output = DatasetId('CLI', 'EXTERNAL_OUTPUT')
+    final_output = DatasetId('CLI', 'FINAL_EXTERNAL_OUTPUT')
     claims = ExternalDatasetId('vdwcore', 'sv.vdw_claims')
 
     def attach_external_claims():
@@ -306,6 +307,16 @@ def test_cli_reports_external_dependencies_and_consumers(capsys):
             (attach_external_claims,),
         )
     )
+    registry.register_etl(
+        EtlDefinition(
+            'cli.process_external_output',
+            lambda frame: frame,
+            {'frame': read(output, 'mrn')},
+            (final_output,),
+            None,
+            None,
+        )
+    )
 
     assert main(['deps', 'cli.external_sources', '--format', 'json']) == 0
     dependencies = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
@@ -316,9 +327,22 @@ def test_cli_reports_external_dependencies_and_consumers(capsys):
     consumers = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
     assert consumers == {
         'dataset': 'vdwcore:sv.vdw_claims',
-        'downstream_datasets': ['CLI.EXTERNAL_OUTPUT'],
+        'downstream_datasets': [
+            'CLI.EXTERNAL_OUTPUT',
+            'CLI.FINAL_EXTERNAL_OUTPUT',
+        ],
         'etl_jobs': ['cli.external_sources'],
         'reusable_functions': [attach_external_claims.__qualname__],
+    }
+
+    assert main(['lineage', str(claims), '--format', 'json']) == 0
+    lineage = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
+    assert lineage == {
+        'ancestors': [],
+        'children': ['CLI.EXTERNAL_OUTPUT'],
+        'dataset': 'vdwcore:sv.vdw_claims',
+        'descendants': ['CLI.EXTERNAL_OUTPUT', 'CLI.FINAL_EXTERNAL_OUTPUT'],
+        'parents': [],
     }
 
     assert main(['graph', 'cli.external_sources', '--format', 'json']) == 0
@@ -327,3 +351,42 @@ def test_cli_reports_external_dependencies_and_consumers(capsys):
         'vdwcore:sv.vdw_claims',
         f'function:{attach_external_claims.__qualname__}',
     ] in graph['edges']
+
+    for output_format in ('text', 'mermaid', 'dot'):
+        assert main(['graph', 'cli.external_sources', '--format', output_format]) == 0
+        output_text = capsys.readouterr().out  # type: ignore[attr-defined]
+        assert 'vdwcore:sv.vdw_claims' in output_text
+
+
+def test_cli_escapes_external_names_in_graph_formats(capsys):
+    unusual = ExternalDatasetId('files', 'folder\\claims"2026')
+    output = DatasetId('CLI', 'ESCAPED_GRAPH_OUTPUT')
+    registry.register_etl(
+        EtlDefinition(
+            'cli.escaped_external',
+            lambda frame: frame,
+            {'frame': external_read(unusual, 'id')},
+            (output,),
+            None,
+            None,
+        )
+    )
+
+    assert main(['graph', 'cli.escaped_external', '--format', 'json']) == 0
+    graph = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
+    assert [str(unusual), str(output)] in graph['edges']
+
+    assert main(['graph', 'cli.escaped_external', '--format', 'mermaid']) == 0
+    mermaid = capsys.readouterr().out  # type: ignore[attr-defined]
+    assert 'files:folder\\claims&quot;2026' in mermaid
+    assert 'files:folder\\claims"2026' not in mermaid
+
+    assert main(['graph', 'cli.escaped_external', '--format', 'dot']) == 0
+    dot = capsys.readouterr().out  # type: ignore[attr-defined]
+    assert 'files:folder\\\\claims\\"2026' in dot
+    assert 'files:folder\\claims"2026' not in dot
+
+
+def test_cli_reports_malformed_external_dataset_name(capsys):
+    assert main(['uses', 'files:', '--format', 'json']) == 1
+    assert 'invalid external dataset name' in capsys.readouterr().err  # type: ignore[attr-defined]

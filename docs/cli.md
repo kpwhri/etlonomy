@@ -73,12 +73,17 @@ etlonomy registry validate --module claims_demo.jobs
 etlonomy deps cohort.build --module claims_demo.jobs --database .etlonomy/catalog.db
 etlonomy uses CLAIMS.CLAIM_LINE --module claims_demo.jobs --format json
 etlonomy lineage CLAIMS.CLAIM_LINE --database .etlonomy/catalog.db --format json
+etlonomy uses company_data:warehouse.claims --module claims_demo.jobs --format json
+etlonomy lineage company_data:warehouse.claims --module claims_demo.jobs --format json
 etlonomy graph cohort.build --module claims_demo.jobs --format dot
 ```
 
 `--module` names the Python module that contains your decorated jobs and helpers. Importing it registers those
 functions.
 `--database` adds the dependencies from the dataset version selected by optional `--as-of`.
+Names containing `:` are datasets loaded by a custom provider. They use the same `uses`
+and `lineage` commands as catalog datasets. See the
+[custom-provider guide](external-datasets.md) for the loading difference.
 
 Choose the output that fits your next step:
 

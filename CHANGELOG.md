@@ -7,6 +7,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- External providers for custom data loading
+- Improved documentation, including material theme
+
 ## [0.1.0]
 
 ### Added

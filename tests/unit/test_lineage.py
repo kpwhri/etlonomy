@@ -4,7 +4,7 @@ import pytest
 
 from etlonomy.exceptions import DependencyCycleError
 from etlonomy.lineage import LineageGraph
-from etlonomy.models import DatasetId, read
+from etlonomy.models import DatasetId, ExternalDatasetId, external_read, read
 from etlonomy.registry import EtlDefinition, Registry, RequirementDefinition
 
 
@@ -221,3 +221,97 @@ def test_lineage_expands_declared_function_uses_with_typed_edges():
         (f'function:{enrich.__qualname__}', 'job:area.build'),
         ('job:area.build', str(output)),
     )
+
+
+def test_external_dataset_participates_in_normal_lineage_traversal():
+    external = ExternalDatasetId('files', 'sv.claims')
+    intermediate = dataset('INTERMEDIATE')
+    output = dataset('OUTPUT')
+    graph = LineageGraph()
+
+    graph.add_job_dependencies(
+        [intermediate], [external_read(external, 'person_id')]
+    )
+    graph.add_dependency(output, [intermediate])
+
+    assert graph.parents(intermediate) == (external,)
+    assert graph.children(external) == (intermediate,)
+    assert graph.ancestors(output) == (intermediate, external)
+    assert graph.descendants(external) == (intermediate, output)
+
+
+def test_lineage_rejects_cycle_between_catalog_and_external_datasets():
+    external = ExternalDatasetId('files', 'sv.claims')
+    output = dataset('OUTPUT')
+    graph = LineageGraph()
+    graph.add_dependency(output, [external])
+
+    with pytest.raises(DependencyCycleError, match='cycle'):
+        graph.add_dependency(external, [output])
+
+    assert graph.parents(external) == ()
+    assert graph.children(external) == (output,)
+
+
+def test_normal_uses_queries_include_direct_and_required_external_datasets():
+    direct = ExternalDatasetId('files', 'sv.claims')
+    required = ExternalDatasetId('warehouse', 'reference.providers')
+    output = dataset('OUTPUT')
+    job_registry = Registry()
+
+    def attach_provider():
+        pass
+
+    job_registry.register_requirement(
+        RequirementDefinition(
+            attach_provider,
+            {'providers': external_read(required, 'provider_id')},
+            None,
+            None,
+        )
+    )
+    job_registry.register_etl(
+        EtlDefinition(
+            'area.external',
+            lambda claims: claims,
+            {'claims': external_read(direct, 'person_id')},
+            (output,),
+            None,
+            None,
+            (attach_provider,),
+        )
+    )
+    graph = LineageGraph()
+    graph.add_registry(job_registry)
+
+    assert graph.declared_uses('area.external') == (direct, required)
+    assert graph.parents(output) == (direct, required)
+    assert graph.consumers(direct, job_registry) == ('area.external',)
+    assert graph.consumers(required, job_registry) == ('area.external',)
+    assert graph.requirement_consumers(required, job_registry) == (
+        attach_provider.__qualname__,
+    )
+    assert graph.external_consumers(required, job_registry) == graph.consumers(
+        required, job_registry
+    )
+    assert graph.external_requirement_consumers(
+        required, job_registry
+    ) == graph.requirement_consumers(required, job_registry)
+
+
+def test_runtime_uses_and_consumers_include_observed_external_dataset():
+    external = ExternalDatasetId('files', 'sv.claims')
+    internal = dataset('MEMBERS')
+    output = dataset('OUTPUT')
+    graph = LineageGraph()
+
+    graph.add_runtime_trace(
+        'area.observed',
+        [output],
+        [read(internal, 'person_id'), external_read(external, 'person_id')],
+    )
+
+    assert graph.uses('area.observed') == (internal, external)
+    assert graph.external_uses('area.observed') == (external,)
+    assert graph.consumers(external, Registry()) == ('area.observed',)
+    assert graph.parents(output) == (internal, external)

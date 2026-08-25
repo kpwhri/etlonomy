@@ -1,6 +1,7 @@
 """Command-line tools for catalogs, code generation, and lineage inspection."""
 
 import argparse
+import html
 import importlib
 import json
 import sys
@@ -20,7 +21,7 @@ from etlonomy.environment import (
 from etlonomy.exceptions import ETLonomyError
 from etlonomy.lineage import LineageGraph
 from etlonomy.manifest import load_manifest_directory
-from etlonomy.models import DatasetId, ExternalDatasetId, ExternalRead, Read
+from etlonomy.models import DatasetId, ExternalDatasetId
 from etlonomy.registry import registry
 
 
@@ -190,30 +191,18 @@ def _lineage_command(args: argparse.Namespace) -> None:
         graph.add_catalog(SQLiteCatalog(args.database), args.as_of)
     if args.command in {'deps', 'graph'}:
         definition = registry.get_etl(args.name)
-        direct = {
-            request.dataset
-            for request in definition.inputs.values()
-            if isinstance(request, Read)
-        }
-        direct_external = {
-            request.dataset
-            for request in definition.inputs.values()
-            if isinstance(request, ExternalRead)
-        }
+        direct = {request.dataset for request in definition.inputs.values()}
         transitive = set(graph.declared_uses(definition.name)) - direct
         transitive.update(
             ancestor for dataset in direct for ancestor in graph.ancestors(dataset)
         )
-        transitive_external = (
-                set(graph.declared_external_uses(definition.name)) - direct_external
-        )
         record: dict[str, object] = {
             'job': definition.name,
-            'direct': sorted(map(str, direct | direct_external)),
-            'transitive': sorted(map(str, transitive | transitive_external)),
+            'direct': sorted(map(str, direct)),
+            'transitive': sorted(map(str, transitive)),
             'outputs': sorted(map(str, definition.outputs)),
         }
-        graph_nodes = set(definition.outputs)
+        graph_nodes: set[DatasetId | ExternalDatasetId] = set(definition.outputs)
         for output in definition.outputs:
             graph_nodes.update(graph.ancestors(output))
         edges = {
@@ -227,28 +216,11 @@ def _lineage_command(args: argparse.Namespace) -> None:
         else:
             _print_graph(edges, args.format, record)
         return
-    if ':' in args.name:
-        external = ExternalDatasetId.parse(args.name)
-        if args.command != 'uses':
-            raise ValueError('external datasets support the uses command')
-        jobs = graph.external_consumers(external, registry)
-        downstream = {
-            output
-            for definition in registry.etls
-            if definition.name in jobs
-            for output in definition.outputs
-        }
-        record = {
-            'dataset': str(external),
-            'etl_jobs': list(jobs),
-            'reusable_functions': list(
-                graph.external_requirement_consumers(external, registry)
-            ),
-            'downstream_datasets': sorted(map(str, downstream)),
-        }
-        _print_record(record, args.format)
-        return
-    dataset = DatasetId.parse(args.name)
+    dataset = (
+        ExternalDatasetId.parse(args.name)
+        if ':' in args.name
+        else DatasetId.parse(args.name)
+    )
     if args.command == 'uses':
         record = {
             'dataset': str(dataset),
@@ -292,8 +264,8 @@ def _print_graph(
         labels = sorted({node for edge in ordered for node in edge})
         identifiers = {label: f'n{index}' for index, label in enumerate(labels)}
         for source, target in ordered:
-            source_label = source.replace('"', '&quot;')
-            target_label = target.replace('"', '&quot;')
+            source_label = html.escape(source, quote=True)
+            target_label = html.escape(target, quote=True)
             print(
                 f'    {identifiers[source]}["{source_label}"] --> '
                 f'{identifiers[target]}["{target_label}"]'
@@ -301,12 +273,24 @@ def _print_graph(
     elif output_format == 'dot':
         print('digraph etlonomy {')
         for source, target in ordered:
-            print(f'    "{source}" -> "{target}";')
+            print(
+                f'    "{_escape_dot_label(source)}" -> '
+                f'"{_escape_dot_label(target)}";'
+            )
         print('}')
     elif output_format == 'json':
         print(json.dumps({'edges': [[a, b] for a, b in ordered]}))
     else:
         _print_record(record, output_format)
+
+
+def _escape_dot_label(label: str) -> str:
+    return (
+        label.replace('\\', '\\\\')
+        .replace('"', '\\"')
+        .replace('\r', '\\r')
+        .replace('\n', '\\n')
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:

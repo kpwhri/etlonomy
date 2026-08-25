@@ -78,17 +78,19 @@ print(graph.uses('cohort.build'))
 Declarations show what may be used. The runtime record shows what one run actually used. Looking at both gives the
 clearest answer.
 
-External datasets are reported separately so methods such as `parents()` continue to return catalog `DatasetId`
-objects:
+Datasets loaded by a custom provider appear in these same results. The provider changes
+how a dataset is loaded, not how lineage treats it:
 
 ```python
-print(graph.declared_external_uses('cohort.build'))
-print(graph.external_uses('cohort.build'))
-print(graph.external_consumers(SV_CLAIMS))
+print(graph.declared_uses('cohort.build'))
+print(graph.uses('cohort.build'))
+print(graph.consumers(CUSTOM_CLAIMS))
+print(graph.descendants(CUSTOM_CLAIMS))
 ```
 
-Declaration graphs still connect the external dataset to the reusable function and job. See
-[external datasets](external-datasets.md) for a complete provider and testing example.
+The `external_*` methods remain as compatibility helpers when older code wants only
+`ExternalDatasetId` values. See [custom-loaded datasets](external-datasets.md) for the
+provider rules and a complete testing example.
 
 ## Choose a graph format
 

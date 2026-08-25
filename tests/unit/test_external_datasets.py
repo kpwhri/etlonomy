@@ -1,12 +1,17 @@
 """Tests for external dataset identities, reads, and runtime routing."""
 
+from contextvars import Context
+from dataclasses import FrozenInstanceError
 from datetime import date
 
 import polars as pl
 import pytest
 
 import etlonomy
-from etlonomy.exceptions import ExternalDatasetProviderNotConfiguredError
+from etlonomy.exceptions import (
+    ExternalDatasetProviderNotConfiguredError,
+    RegistryError,
+)
 from etlonomy.models import (
     ExecutionContext,
     ExternalDatasetId,
@@ -15,7 +20,7 @@ from etlonomy.models import (
 )
 from etlonomy.providers import TestDatasetProvider
 from etlonomy.registry import EtlDefinition, Registry
-from etlonomy.runtime import Runtime
+from etlonomy.runtime import Runtime, get_active_runtime
 
 
 class RecordingExternalProvider:
@@ -43,7 +48,10 @@ def test_external_dataset_id_rejects_invalid_system(system: str):
         ExternalDatasetId(system, 'sv.claims')
 
 
-@pytest.mark.parametrize('name', ['', ' sv.claims', 'sv.claims '])
+@pytest.mark.parametrize(
+    'name',
+    ['', ' sv.claims', 'sv.claims ', 'sv.\nclaims', 'sv.\x00claims', 'sv.\x7fclaims'],
+)
 def test_external_dataset_id_rejects_invalid_name(name: str):
     with pytest.raises(ValueError, match='external dataset name'):
         ExternalDatasetId('files', name)
@@ -52,6 +60,16 @@ def test_external_dataset_id_rejects_invalid_name(name: str):
 def test_external_dataset_id_parse_requires_namespace_separator():
     with pytest.raises(ValueError, match='canonical external dataset'):
         ExternalDatasetId.parse('sv.claims')
+
+
+def test_external_dataset_values_are_immutable():
+    dataset = ExternalDatasetId('files', 'sv.claims')
+    request = external_read(dataset, 'person_id')
+
+    with pytest.raises(FrozenInstanceError):
+        dataset.name = 'sv.other'  # type: ignore[misc]
+    with pytest.raises(FrozenInstanceError):
+        request.columns = ('other',)  # type: ignore[misc]
 
 
 def test_external_read_records_requested_columns():
@@ -108,6 +126,101 @@ def test_runtime_routes_external_read_and_records_dependency():
     assert runtime.run('external.load') is supplied
     assert external_provider.calls == [(request, context)]
     assert runtime.last_dependencies == (request,)
+
+
+def test_runtime_routes_multiple_systems_and_resources_to_matching_providers():
+    first = external_read(ExternalDatasetId('files', 'sv.claims'), 'person_id')
+    second = external_read(ExternalDatasetId('files', 'sv.providers'), 'provider_id')
+    third = external_read(ExternalDatasetId('warehouse', 'reference.regions'), 'region')
+    files_provider = RecordingExternalProvider('file value')
+    warehouse_provider = RecordingExternalProvider('warehouse value')
+    job_registry = Registry()
+    job_registry.register_etl(
+        EtlDefinition(
+            'external.multiple',
+            lambda claims, providers, regions: (claims, providers, regions),
+            {'claims': first, 'providers': second, 'regions': third},
+            (),
+            None,
+            None,
+        )
+    )
+    runtime = Runtime(
+        provider=TestDatasetProvider({}),
+        external_providers={
+            'files': files_provider,
+            'warehouse': warehouse_provider,
+        },
+        context=ExecutionContext('test'),
+        job_registry=job_registry,
+    )
+
+    assert runtime.run('external.multiple') == (
+        'file value',
+        'file value',
+        'warehouse value',
+    )
+    assert [request for request, _ in files_provider.calls] == [first, second]
+    assert [request for request, _ in warehouse_provider.calls] == [third]
+    assert runtime.last_dependencies == (first, second, third)
+
+
+def test_runtime_resolves_two_column_requests_for_same_external_dataset():
+    dataset = ExternalDatasetId('files', 'sv.claims')
+    identifiers = external_read(dataset, 'person_id')
+    diagnoses = external_read(dataset, 'diagnosis_code')
+    provider = RecordingExternalProvider(object())
+    job_registry = Registry()
+    job_registry.register_etl(
+        EtlDefinition(
+            'external.same_dataset',
+            lambda ids, codes: (ids, codes),
+            {'ids': identifiers, 'codes': diagnoses},
+            (),
+            None,
+            None,
+        )
+    )
+    runtime = Runtime(
+        provider=TestDatasetProvider({}),
+        external_providers={'files': provider},
+        context=ExecutionContext(),
+        job_registry=job_registry,
+    )
+
+    runtime.run('external.same_dataset')
+
+    assert [request for request, _ in provider.calls] == [identifiers, diagnoses]
+    assert runtime.last_dependencies == (identifiers, diagnoses)
+
+
+def test_runtime_copies_external_provider_mapping_at_construction():
+    request = external_read(ExternalDatasetId('files', 'sv.claims'), 'person_id')
+    provider = RecordingExternalProvider('claims')
+    providers = {'files': provider}
+    job_registry = Registry()
+    job_registry.register_etl(
+        EtlDefinition(
+            'external.mapping',
+            lambda claims: claims,
+            {'claims': request},
+            (),
+            None,
+            None,
+        )
+    )
+    runtime = Runtime(
+        provider=TestDatasetProvider({}),
+        external_providers=providers,
+        context=ExecutionContext(),
+        job_registry=job_registry,
+    )
+
+    providers.clear()
+
+    assert runtime.run('external.mapping') == 'claims'
+    with pytest.raises(TypeError):
+        runtime.external_providers['other'] = provider  # type: ignore[index]
 
 
 def test_explicit_external_etl_argument_skips_provider_and_keeps_columns():
@@ -190,6 +303,126 @@ def test_explicit_external_argument_is_passed_unchanged(monkeypatch):
 
     assert result is supplied
     assert result.columns == ['person_id', 'extra_test_column']
+
+
+def test_positional_external_argument_is_passed_unchanged(monkeypatch):
+    job_registry = Registry()
+    monkeypatch.setattr('etlonomy.decorators.registry', job_registry)
+    request = external_read(ExternalDatasetId('files', 'sv.claims'), 'person_id')
+
+    @etlonomy.requires(claims=request)
+    def use_claims(claims: pl.DataFrame) -> pl.DataFrame:
+        return claims
+
+    supplied = pl.DataFrame({
+        'person_id': [1],
+        'extra_test_column': ['preserved'],
+    })
+
+    result = use_claims(supplied)
+
+    assert result is supplied
+    assert result.columns == ['person_id', 'extra_test_column']
+
+
+def test_external_provider_failure_preserves_trace_and_clears_runtime():
+    successful = external_read(ExternalDatasetId('files', 'sv.good'), 'person_id')
+    failing = external_read(ExternalDatasetId('files', 'sv.bad'), 'person_id')
+
+    class ConditionalProvider:
+        def read(self, request: ExternalRead, context: ExecutionContext) -> object:
+            del context
+            if request == failing:
+                raise ValueError('external read failed')
+            return object()
+
+    job_registry = Registry()
+    job_registry.register_etl(
+        EtlDefinition(
+            'external.success', lambda frame: frame, {'frame': successful}, (), None, None
+        )
+    )
+    job_registry.register_etl(
+        EtlDefinition(
+            'external.failure', lambda frame: frame, {'frame': failing}, (), None, None
+        )
+    )
+    runtime = Runtime(
+        provider=TestDatasetProvider({}),
+        external_providers={'files': ConditionalProvider()},
+        context=ExecutionContext(),
+        job_registry=job_registry,
+    )
+
+    runtime.run('external.success')
+    with pytest.raises(ValueError, match='external read failed'):
+        runtime.run('external.failure')
+
+    assert runtime.last_dependencies == (successful,)
+    with pytest.raises(RegistryError, match='active Runtime'):
+        get_active_runtime()
+
+
+def test_external_traces_are_isolated_between_execution_contexts():
+    left = external_read(ExternalDatasetId('files', 'sv.left'), 'value')
+    right = external_read(ExternalDatasetId('files', 'sv.right'), 'value')
+    job_registry = Registry()
+    job_registry.register_etl(
+        EtlDefinition('external.left', lambda frame: frame, {'frame': left}, (), None, None)
+    )
+    job_registry.register_etl(
+        EtlDefinition(
+            'external.right', lambda frame: frame, {'frame': right}, (), None, None
+        )
+    )
+    runtime = Runtime(
+        provider=TestDatasetProvider({}),
+        external_providers={'files': RecordingExternalProvider(object())},
+        context=ExecutionContext(),
+        job_registry=job_registry,
+    )
+    left_context = Context()
+    right_context = Context()
+
+    left_context.run(runtime.run, 'external.left')
+    right_context.run(runtime.run, 'external.right')
+
+    assert left_context.run(lambda: runtime.last_dependencies) == (left,)
+    assert right_context.run(lambda: runtime.last_dependencies) == (right,)
+    assert runtime.last_dependencies == ()
+
+
+def test_nested_requires_resolves_external_dataset_and_records_trace(monkeypatch):
+    job_registry = Registry()
+    monkeypatch.setattr('etlonomy.decorators.registry', job_registry)
+    request = external_read(ExternalDatasetId('files', 'sv.claims'), 'person_id')
+
+    @etlonomy.requires(claims=request)
+    def attach_claims(seed: str, claims: object) -> tuple[str, object]:
+        return seed, claims
+
+    @etlonomy.requires(uses=(attach_claims,))
+    def enrich(seed: str) -> tuple[str, object]:
+        return attach_claims(seed)
+
+    @etlonomy.etl(
+        name='external.nested',
+        inputs={},
+        uses=(enrich,),
+    )
+    def build() -> tuple[str, object]:
+        return enrich('seed')
+
+    supplied = object()
+    runtime = Runtime(
+        provider=TestDatasetProvider({}),
+        external_providers={'files': RecordingExternalProvider(supplied)},
+        context=ExecutionContext(),
+        job_registry=job_registry,
+    )
+
+    assert runtime.run('external.nested') == ('seed', supplied)
+    assert runtime.last_dependencies == (request,)
 
 
 def test_package_exports_external_dataset_api():

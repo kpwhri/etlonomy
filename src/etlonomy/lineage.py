@@ -14,6 +14,8 @@ from etlonomy.models import (
 )
 from etlonomy.registry import Registry, registry
 
+LineageDatasetId = DatasetId | ExternalDatasetId
+
 
 class ResolvedLineageDataset(Protocol):
     """Expose the stable catalog identifier used for dependency lookup."""
@@ -47,8 +49,8 @@ class LineageGraph:
 
     def __init__(self) -> None:
         """Create an empty directed lineage graph."""
-        self._parents: dict[DatasetId, set[DatasetId]] = {}
-        self._children: dict[DatasetId, set[DatasetId]] = {}
+        self._parents: dict[LineageDatasetId, set[LineageDatasetId]] = {}
+        self._children: dict[LineageDatasetId, set[LineageDatasetId]] = {}
         self._job_reads: dict[str, set[DatasetId]] = {}
         self._job_declared_reads: dict[str, set[DatasetId]] = {}
         self._job_external_reads: dict[str, set[ExternalDatasetId]] = {}
@@ -64,7 +66,11 @@ class LineageGraph:
             Callable[..., object], set[ExternalDatasetId]
         ] = {}
 
-    def add_dependency(self, dataset: DatasetId, upstream: Iterable[DatasetId]) -> None:
+    def add_dependency(
+            self,
+            dataset: LineageDatasetId,
+            upstream: Iterable[LineageDatasetId],
+    ) -> None:
         """Declare direct upstream datasets and reject dependency cycles."""
         parents = set(upstream)
         if dataset in parents:
@@ -81,42 +87,49 @@ class LineageGraph:
                 self._children[parent].discard(dataset)
             raise
 
-    def parents(self, dataset: DatasetId) -> tuple[DatasetId, ...]:
+    def parents(
+            self, dataset: LineageDatasetId
+    ) -> tuple[LineageDatasetId, ...]:
         """Return direct upstream datasets in canonical-name order."""
         return self._ordered(self._parents.get(dataset, set()))
 
-    def children(self, dataset: DatasetId) -> tuple[DatasetId, ...]:
+    def children(
+            self, dataset: LineageDatasetId
+    ) -> tuple[LineageDatasetId, ...]:
         """Return direct downstream datasets in canonical-name order."""
         return self._ordered(self._children.get(dataset, set()))
 
-    def ancestors(self, dataset: DatasetId) -> tuple[DatasetId, ...]:
+    def ancestors(
+            self, dataset: LineageDatasetId
+    ) -> tuple[LineageDatasetId, ...]:
         """Return every transitive upstream dataset deterministically."""
         return self._walk(dataset, self._parents)
 
-    def descendants(self, dataset: DatasetId) -> tuple[DatasetId, ...]:
+    def descendants(
+            self, dataset: LineageDatasetId
+    ) -> tuple[LineageDatasetId, ...]:
         """Return every transitive downstream dataset deterministically."""
         return self._walk(dataset, self._children)
 
     def consumers(
-            self, dataset: DatasetId, job_registry: Registry = registry
+            self,
+            dataset: LineageDatasetId,
+            job_registry: Registry = registry,
     ) -> tuple[str, ...]:
-        """Return ETL job names that directly consume a dataset."""
+        """Return ETL jobs that directly or transitively use a dataset."""
         declared = {
             definition.name
             for definition in job_registry.etls
-            if any(
-                isinstance(read, Read) and read.dataset == dataset
-                for read in definition.inputs.values()
-            )
+            if any(read.dataset == dataset for read in definition.inputs.values())
         }
         indirect = {
             job_name
-            for job_name, datasets in self._job_declared_reads.items()
+            for job_name, datasets in self._declared_reads_by_job().items()
             if dataset in datasets
         }
         traced = {
             job_name
-            for job_name, datasets in self._job_reads.items()
+            for job_name, datasets in self._reads_by_job().items()
             if dataset in datasets
         }
         return tuple(sorted(declared | indirect | traced))
@@ -126,34 +139,16 @@ class LineageGraph:
             dataset: ExternalDatasetId,
             job_registry: Registry = registry,
     ) -> tuple[str, ...]:
-        """Return ETL jobs that directly or transitively use external data."""
-        declared = {
-            definition.name
-            for definition in job_registry.etls
-            if any(
-                isinstance(read, ExternalRead) and read.dataset == dataset
-                for read in definition.inputs.values()
-            )
-        }
-        indirect = {
-            job_name
-            for job_name, datasets in self._job_declared_external_reads.items()
-            if dataset in datasets
-        }
-        traced = {
-            job_name
-            for job_name, datasets in self._job_external_reads.items()
-            if dataset in datasets
-        }
-        return tuple(sorted(declared | indirect | traced))
+        """Return ETL jobs that use an externally loaded dataset."""
+        return self.consumers(dataset, job_registry)
 
-    def uses(self, job_name: str) -> tuple[DatasetId, ...]:
+    def uses(self, job_name: str) -> tuple[LineageDatasetId, ...]:
         """Return datasets observed while executing a named ETL job."""
-        return self._ordered(self._job_reads.get(job_name, set()))
+        return self._ordered(self._reads_by_job().get(job_name, set()))
 
-    def declared_uses(self, job_name: str) -> tuple[DatasetId, ...]:
+    def declared_uses(self, job_name: str) -> tuple[LineageDatasetId, ...]:
         """Return direct and transitive datasets declared for an ETL job."""
-        return self._ordered(self._job_declared_reads.get(job_name, set()))
+        return self._ordered(self._declared_reads_by_job().get(job_name, set()))
 
     def external_uses(self, job_name: str) -> tuple[ExternalDatasetId, ...]:
         """Return external datasets observed while executing an ETL job."""
@@ -201,9 +196,7 @@ class LineageGraph:
             self, outputs: Iterable[DatasetId], reads: Iterable[DependencyRead]
     ) -> None:
         """Add lineage observed or declared for one ETL job execution."""
-        upstream = {
-            request.dataset for request in reads if isinstance(request, Read)
-        }
+        upstream = {request.dataset for request in reads}
         for output in outputs:
             self.add_dependency(output, upstream)
 
@@ -239,7 +232,7 @@ class LineageGraph:
             self._job_declared_reads[definition.name] = declared
             self._job_declared_external_reads[definition.name] = declared_external
             for output in definition.outputs:
-                self.add_dependency(output, declared)
+                self.add_dependency(output, declared | declared_external)
 
     def declaration_edges(
             self, job_name: str, job_registry: Registry = registry
@@ -317,16 +310,15 @@ class LineageGraph:
             self.add_dependency(dataset, catalog.get_dependencies(version_id))
 
     def requirement_consumers(
-            self, dataset: DatasetId, job_registry: Registry = registry
+            self,
+            dataset: LineageDatasetId,
+            job_registry: Registry = registry,
     ) -> tuple[str, ...]:
         """Return reusable functions that declare a read of the dataset."""
         names = {
             definition.function.__qualname__
             for definition in job_registry.requirements
-            if any(
-                isinstance(read, Read) and read.dataset == dataset
-                for read in definition.inputs.values()
-            )
+            if any(read.dataset == dataset for read in definition.inputs.values())
         }
         return tuple(sorted(names))
 
@@ -336,18 +328,12 @@ class LineageGraph:
             job_registry: Registry = registry,
     ) -> tuple[str, ...]:
         """Return reusable functions that declare an external dataset read."""
-        names = {
-            definition.function.__qualname__
-            for definition in job_registry.requirements
-            if any(
-                isinstance(read, ExternalRead) and read.dataset == dataset
-                for read in definition.inputs.values()
-            )
-        }
-        return tuple(sorted(names))
+        return self.requirement_consumers(dataset, job_registry)
 
     @staticmethod
-    def _ordered(datasets: Iterable[DatasetId]) -> tuple[DatasetId, ...]:
+    def _ordered(
+            datasets: Iterable[LineageDatasetId],
+    ) -> tuple[LineageDatasetId, ...]:
         return tuple(sorted(datasets, key=lambda item: item.canonical_name))
 
     @staticmethod
@@ -357,9 +343,11 @@ class LineageGraph:
         return tuple(sorted(datasets, key=lambda item: item.canonical_name))
 
     def _walk(
-            self, dataset: DatasetId, edges: dict[DatasetId, set[DatasetId]]
-    ) -> tuple[DatasetId, ...]:
-        found: set[DatasetId] = set()
+            self,
+            dataset: LineageDatasetId,
+            edges: dict[LineageDatasetId, set[LineageDatasetId]],
+    ) -> tuple[LineageDatasetId, ...]:
+        found: set[LineageDatasetId] = set()
         pending = list(edges.get(dataset, set()))
         while pending:
             current = pending.pop()
@@ -370,10 +358,10 @@ class LineageGraph:
         return self._ordered(found)
 
     def _assert_acyclic(self) -> None:
-        visiting: set[DatasetId] = set()
-        visited: set[DatasetId] = set()
+        visiting: set[LineageDatasetId] = set()
+        visited: set[LineageDatasetId] = set()
 
-        def visit(dataset: DatasetId) -> None:
+        def visit(dataset: LineageDatasetId) -> None:
             if dataset in visiting:
                 raise DependencyCycleError(f'dependency cycle includes {dataset}')
             if dataset in visited:
@@ -386,3 +374,22 @@ class LineageGraph:
 
         for dataset in self._parents:
             visit(dataset)
+
+    def _reads_by_job(self) -> dict[str, set[LineageDatasetId]]:
+        job_names = self._job_reads.keys() | self._job_external_reads.keys()
+        return {
+            job_name: set(self._job_reads.get(job_name, set()))
+            | set(self._job_external_reads.get(job_name, set()))
+            for job_name in job_names
+        }
+
+    def _declared_reads_by_job(self) -> dict[str, set[LineageDatasetId]]:
+        job_names = (
+                self._job_declared_reads.keys()
+                | self._job_declared_external_reads.keys()
+        )
+        return {
+            job_name: set(self._job_declared_reads.get(job_name, set()))
+            | set(self._job_declared_external_reads.get(job_name, set()))
+            for job_name in job_names
+        }

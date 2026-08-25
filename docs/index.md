@@ -54,7 +54,9 @@ Next: [install Etlonomy and build a small catalog](getting-started.md).
 8. [Add shared connections and optional credentials](tutorials/08-credentials.md)
 
 After the numbered path, try the [SAS7BDAT](tutorials/09-sas7bdat.md) or
-[remote SQL database](tutorials/10-sql-databases.md) extension.
+[remote SQL database](tutorials/10-sql-databases.md) extension. If another Python library
+already loads your data, follow the [custom provider](tutorials/11-custom-provider.md)
+extension.
 
 For prerequisites, learning paths, and optional branches, open the
 [tutorial home](tutorials/index.md).

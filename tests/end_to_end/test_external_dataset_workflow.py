@@ -28,21 +28,18 @@ class ParquetDataset:
         return pl.scan_parquet(self.path)
 
 
-@dataclass(frozen=True)
-class SourceView:
-    claims: ParquetDataset
-
-
-class SourceViewProvider:
-    def __init__(self, source_view: SourceView):
-        self.source_view = source_view
+class FileDatasetProvider:
+    def __init__(self, claims: ParquetDataset):
+        self._resources = {'warehouse.claims': claims}
+        self.requests: list[ExternalRead] = []
 
     def read(
             self, request: ExternalRead, context: ExecutionContext
     ) -> pl.LazyFrame:
         del context
-        assert request.dataset.name == 'sv.claims'
-        return self.source_view.claims.load().select(request.columns)
+        self.requests.append(request)
+        dataset = self._resources[request.dataset.name]
+        return dataset.load().select(list(request.columns))
 
 
 def test_external_required_dataset_runs_and_appears_in_lineage(tmp_path: Path, monkeypatch):
@@ -50,7 +47,7 @@ def test_external_required_dataset_runs_and_appears_in_lineage(tmp_path: Path, m
     monkeypatch.setattr('etlonomy.decorators.registry', job_registry)
     cohort = DatasetId('COHORT', 'MEMBERS')
     output = DatasetId('COHORT', 'CLAIMS')
-    external_claims = ExternalDatasetId('files', 'sv.claims')
+    external_claims = ExternalDatasetId('files', 'warehouse.claims')
     claims_request = external_read(
         external_claims,
         'person_id',
@@ -73,7 +70,7 @@ def test_external_required_dataset_runs_and_appears_in_lineage(tmp_path: Path, m
     members_request = read(cohort, 'person_id')
 
     @etl(
-        name='cohort.external_claims',
+        name='cohort.custom_claims',
         inputs={'members': members_request},
         outputs=(output,),
         uses=(attach_claims,),
@@ -81,49 +78,74 @@ def test_external_required_dataset_runs_and_appears_in_lineage(tmp_path: Path, m
     def build_cohort_claims(members: pl.LazyFrame) -> pl.LazyFrame:
         return attach_claims(members)
 
+    external_provider = FileDatasetProvider(ParquetDataset(claims_path))
     runtime = Runtime(
         provider=TestDatasetProvider({
             cohort: pl.DataFrame({'person_id': [1, 2]}),
         }),
         external_providers={
-            'files': SourceViewProvider(
-                SourceView(claims=ParquetDataset(claims_path))
-            ),
+            'files': external_provider,
         },
         context=ExecutionContext('test'),
         job_registry=job_registry,
     )
 
-    result = runtime.run('cohort.external_claims').collect()
+    result = runtime.run('cohort.custom_claims').collect()
 
     assert result.to_dict(as_series=False) == {
         'person_id': [1],
         'diagnosis_code': ['I10'],
     }
     assert runtime.last_dependencies == (members_request, claims_request)
+    assert external_provider.requests == [claims_request]
+
+    test_members = pl.DataFrame({'person_id': [10, 20]}).lazy()
+    test_claims = pl.DataFrame({
+        'person_id': [10, 30],
+        'diagnosis_code': ['TEST', 'OTHER'],
+        'extra_test_column': ['kept', 'kept'],
+    }).lazy()
+
+    direct_result = attach_claims(test_members, claims=test_claims).collect()
+
+    assert direct_result['person_id'].to_list() == [10]
+    assert external_provider.requests == [claims_request]
 
     declared = LineageGraph()
     declared.add_registry(job_registry)
-    assert declared.declared_uses('cohort.external_claims') == (cohort,)
-    assert declared.declared_external_uses('cohort.external_claims') == (
+    assert declared.declared_uses('cohort.custom_claims') == (
+        cohort,
+        external_claims,
+    )
+    assert declared.declared_external_uses('cohort.custom_claims') == (
         external_claims,
     )
     assert declared.external_consumers(external_claims, job_registry) == (
-        'cohort.external_claims',
+        'cohort.custom_claims',
     )
     assert declared.external_requirement_consumers(
         external_claims, job_registry
     ) == (attach_claims.__qualname__,)
+    assert declared.requirement_consumers(
+        external_claims, job_registry
+    ) == (attach_claims.__qualname__,)
+    assert declared.parents(output) == (cohort, external_claims)
+    assert declared.ancestors(output) == (cohort, external_claims)
+    assert declared.descendants(external_claims) == (output,)
+    assert declared.used_functions('cohort.custom_claims') == (
+        attach_claims.__qualname__,
+    )
     assert (
                str(external_claims),
                f'function:{attach_claims.__qualname__}',
-           ) in declared.declaration_edges('cohort.external_claims', job_registry)
+           ) in declared.declaration_edges('cohort.custom_claims', job_registry)
 
     traced = LineageGraph()
     traced.add_runtime_trace(
-        'cohort.external_claims',
+        'cohort.custom_claims',
         (output,),
         runtime.last_dependencies,
     )
-    assert traced.uses('cohort.external_claims') == (cohort,)
-    assert traced.external_uses('cohort.external_claims') == (external_claims,)
+    assert traced.uses('cohort.custom_claims') == (cohort, external_claims)
+    assert traced.external_uses('cohort.custom_claims') == (external_claims,)
+    assert traced.parents(output) == (cohort, external_claims)

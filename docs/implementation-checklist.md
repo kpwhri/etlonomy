@@ -65,12 +65,15 @@ See [catalog commands](catalog.md), the [CLI reference](cli.md), and
 - [ ] Use `ExternalDatasetId` only when another Python library owns resolution
 - [ ] Keep each external provider in application code or a separate integration package
 - [ ] Pass external dependency arguments directly in focused unit tests
+- [ ] Confirm custom providers return a predictable type and apply requested columns
+- [ ] Check custom-loaded datasets with the ordinary `uses` and lineage methods
 - [ ] Import job modules before calling `Runtime.run()`
 - [ ] Create `CatalogDatasetProvider` from the catalog and run the job by name
 
 Read [ETL jobs](etl-jobs.md), [reusable helpers](requires.md),
 [external datasets](external-datasets.md), and
-[Tutorial 5](tutorials/05-reusable-functions.md).
+[Tutorial 5](tutorials/05-reusable-functions.md). If another Python library loads a
+dataset, follow the [custom-provider tutorial](tutorials/11-custom-provider.md).
 
 ## Test the project
 

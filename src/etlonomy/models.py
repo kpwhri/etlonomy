@@ -53,7 +53,11 @@ class ExternalDatasetId:
         """Validate the external system and dataset names."""
         if not _EXTERNAL_SYSTEM.fullmatch(self.system):
             raise ValueError(f'invalid external dataset system: {self.system!r}')
-        if not self.name or self.name != self.name.strip():
+        if (
+                not self.name
+                or self.name != self.name.strip()
+                or not self.name.isprintable()
+        ):
             raise ValueError(f'invalid external dataset name: {self.name!r}')
 
     @property
