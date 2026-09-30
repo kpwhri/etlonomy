@@ -17,7 +17,7 @@ class DatasetId:
     subject: str
     name: str
 
-    def __post_init__(self) -> None:
+    def __post_init__(self):
         """Validate the canonical subject and dataset components."""
         if not _CANONICAL_COMPONENT.fullmatch(self.subject):
             raise ValueError(f'invalid dataset subject: {self.subject!r}')
@@ -49,7 +49,7 @@ class ExternalDatasetId:
     system: str
     name: str
 
-    def __post_init__(self) -> None:
+    def __post_init__(self):
         """Validate the external system and dataset names."""
         if not _EXTERNAL_SYSTEM.fullmatch(self.system):
             raise ValueError(f'invalid external dataset system: {self.system!r}')
@@ -88,7 +88,7 @@ class Read:
     columns: tuple[str, ...]
     version: int | None = None
 
-    def __post_init__(self) -> None:
+    def __post_init__(self):
         """Reject empty, duplicate, or invalid read arguments."""
         if not self.columns:
             raise ValueError('at least one column must be requested')
@@ -111,7 +111,7 @@ class ExternalRead:
     dataset: ExternalDatasetId
     columns: tuple[str, ...]
 
-    def __post_init__(self) -> None:
+    def __post_init__(self):
         """Reject empty or duplicate external read columns."""
         if not self.columns:
             raise ValueError('at least one column must be requested')
@@ -136,7 +136,7 @@ class ExecutionContext:
     environment: str | None = None
     as_of: date | None = None
 
-    def __post_init__(self) -> None:
+    def __post_init__(self):
         """Reject an empty environment name."""
         if self.environment is not None and not self.environment.strip():
             raise ValueError('environment must not be empty')

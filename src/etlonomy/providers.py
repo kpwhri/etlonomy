@@ -24,7 +24,7 @@ class DatasetProvider(Protocol):
 class ExternalDatasetProvider(Protocol):
     """Resolve datasets managed by a system outside Etlonomy."""
 
-    def read(self, request: ExternalRead, context: ExecutionContext) -> object:
+    def read(self, request: ExternalRead, context: ExecutionContext) :
         """Resolve and return an external dataset read request."""
         ...
 
@@ -47,7 +47,7 @@ class ExternalProviderBinding:
         if not callable(self.factory):
             raise TypeError('provider binding factory must be callable')
 
-    def create(self, value: object) -> ExternalDatasetProvider:
+    def create(self, value) -> ExternalDatasetProvider:
         """Construct and validate the provider for one function call."""
         provider = self.factory(value)
         if not callable(getattr(provider, 'read', None)):

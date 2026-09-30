@@ -32,7 +32,7 @@ def _dataset(value: str) -> DatasetId:
         raise argparse.ArgumentTypeError(str(error)) from error
 
 
-def _parser() -> argparse.ArgumentParser:
+def _parser():
     parser = argparse.ArgumentParser(prog='etlonomy')
     commands = parser.add_subparsers(dest='command', required=True)
     catalog = commands.add_parser('catalog')
@@ -78,7 +78,7 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _catalog_command(args: argparse.Namespace) -> None:
+def _catalog_command(args: argparse.Namespace):
     if args.catalog_command == 'build':
         print(
             build_catalog(
@@ -143,7 +143,7 @@ def _json_record(value: ResolvedDataset) -> dict[str, object]:
     return cast(dict[str, object], json.loads(json.dumps(record, default=str)))
 
 
-def _json_value(value: object) -> object:
+def _json_value(value):
     if is_dataclass(value) and not isinstance(value, type):
         return {
             item.name: _json_value(getattr(value, item.name))
@@ -171,19 +171,19 @@ def _catalog_snapshot(catalog: SQLiteCatalog) -> dict[str, object]:
     return snapshot
 
 
-def _load_modules(names: Sequence[str]) -> None:
+def _load_modules(names: Sequence[str]):
     for name in names:
         importlib.import_module(name)
 
 
-def _registry_command(modules: Sequence[str]) -> None:
+def _registry_command(modules: Sequence[str]):
     _load_modules(modules)
     for definition in registry.etls:
         print(definition.name)
     print(f'valid: {len(registry.etls)} ETL jobs')
 
 
-def _lineage_command(args: argparse.Namespace) -> None:
+def _lineage_command(args: argparse.Namespace):
     _load_modules(args.module)
     graph = LineageGraph()
     graph.add_registry(registry)
@@ -239,7 +239,7 @@ def _lineage_command(args: argparse.Namespace) -> None:
     _print_record(record, args.format)
 
 
-def _print_record(record: dict[str, object], output_format: str) -> None:
+def _print_record(record: dict[str, object], output_format: str):
     if output_format == 'json':
         print(json.dumps(record, sort_keys=True))
         return
@@ -257,7 +257,7 @@ def _print_graph(
         edges: set[tuple[str, str]],
         output_format: str,
         record: dict[str, object],
-) -> None:
+):
     ordered = sorted(edges)
     if output_format == 'mermaid':
         print('graph LR')
@@ -307,7 +307,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         else:
             _lineage_command(args)
     except (ETLonomyError, ImportError, OSError, ValueError) as error:
-        print(f'error: {error}', file=sys.stderr)
+        print(f'Error: {error}', file=sys.stderr)
         return 1
     return 0
 

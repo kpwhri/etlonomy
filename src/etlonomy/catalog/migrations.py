@@ -32,7 +32,7 @@ def discover_migrations(
 
 def apply_migrations(
         connection: sqlite3.Connection, path: Path = DEFAULT_MIGRATION_DIRECTORY
-) -> None:
+) :
     """Apply pending migrations atomically and enable foreign-key enforcement."""
     connection.execute('PRAGMA foreign_keys = ON')
     try:

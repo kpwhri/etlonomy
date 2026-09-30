@@ -1,5 +1,5 @@
 """Read committed SAS fixtures through real adapter and catalog boundaries."""
-
+import importlib
 from datetime import date
 from pathlib import Path
 
@@ -14,6 +14,17 @@ from etlonomy.exceptions import DatasetProviderError
 FIXTURE_DIRECTORY = Path(__file__).parents[1] / 'fixtures'
 
 
+def _sas_support_enabled() -> bool:
+    return importlib.util.find_spec('pyreadstat') is not None
+
+
+requires_sas = pytest.mark.skipif(
+    not _sas_support_enabled(),
+    reason='SAS7BDAT support requires the etlonomy sas extra',
+)
+
+
+@requires_sas
 def test_real_claim_line_sas_fixture_projects_and_renames_columns():
     path = FIXTURE_DIRECTORY / 'claim_line.sas7bdat'
     assert path.is_file(), f'missing SAS fixture: {path}'
@@ -35,18 +46,14 @@ def test_real_claim_line_sas_fixture_projects_and_renames_columns():
     result = frame.collect()
 
     assert isinstance(frame, pl.LazyFrame)
-    assert result.columns == [
-        'person_id',
-        'provider_id',
-        'service_date',
-        'diagnosis_code',
-    ]
+    assert result.columns == ['person_id', 'provider_id', 'service_date', 'diagnosis_code']
     assert result['person_id'].cast(pl.Int64).to_list() == [1, 2, 3]
     assert result['provider_id'].cast(pl.Int64).to_list() == [101, 102, 103]
     assert result['diagnosis_code'].to_list() == ['I10', '', 'E11']
     assert 'ignored_legacy_field' not in result.columns
 
 
+@requires_sas
 def test_real_provider_sas_fixture_projects_and_renames_specialty():
     path = FIXTURE_DIRECTORY / 'provider.sas7bdat'
     assert path.is_file(), f'missing SAS fixture: {path}'
@@ -65,14 +72,11 @@ def test_real_provider_sas_fixture_projects_and_renames_specialty():
     assert isinstance(frame, pl.LazyFrame)
     assert result.columns == ['provider_id', 'specialty']
     assert result['provider_id'].cast(pl.Int64).to_list() == [101, 102, 103]
-    assert result['specialty'].to_list() == [
-        'Cardiology',
-        'Primary Care',
-        'Neurology',
-    ]
+    assert result['specialty'].to_list() == ['Cardiology', 'Primary Care', 'Neurology']
     assert 'inactive_flag' not in result.columns
 
 
+@requires_sas
 def test_catalog_provider_reads_real_sas_fixtures_with_partial_mappings(tmp_path: Path):
     claim_path = FIXTURE_DIRECTORY / 'claim_line.sas7bdat'
     provider_path = FIXTURE_DIRECTORY / 'provider.sas7bdat'
@@ -144,7 +148,11 @@ def test_real_sas_reader_translates_invalid_file_error(tmp_path: Path):
     invalid = tmp_path / 'invalid.sas7bdat'
     invalid.write_bytes(b'not a SAS data file')
 
-    with pytest.raises(DatasetProviderError, match='Unable to read SAS7BDAT'):
-        SasAdapter().read(
-            AdapterSource('sas7bdat', str(invalid)), ('person_id',)
-        )
+    expected_message = (
+        'Unable to read SAS7BDAT'
+        if _sas_support_enabled()
+        else 'SAS7BDAT support requires the etlonomy sas extra'
+    )
+
+    with pytest.raises(DatasetProviderError, match=expected_message):
+        SasAdapter().read(AdapterSource('sas7bdat', str(invalid)), ('person_id',))

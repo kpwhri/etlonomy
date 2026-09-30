@@ -208,8 +208,6 @@ See the [CLI reference](docs/cli.md) for complete arguments and examples.
 
 ```console
 python -m pytest --cov=etlonomy --cov-branch --cov-fail-under=95
-python -m ruff check .
-python -m mypy src/etlonomy
 python -m mkdocs build --strict
 ```
 

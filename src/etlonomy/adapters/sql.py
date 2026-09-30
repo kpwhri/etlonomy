@@ -27,7 +27,7 @@ class SqlAdapter:
             credential_provider: CredentialProvider | None = None,
             *,
             engine_factory: EngineFactory = create_engine,
-    ) -> None:
+    ) :
         """Configure optional credential lookup and an injectable engine boundary."""
         self._credential_provider = credential_provider
         self._engine_factory = engine_factory

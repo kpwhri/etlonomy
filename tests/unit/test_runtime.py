@@ -16,7 +16,7 @@ class RecordingProvider:
     def __init__(self):
         self.calls: list[tuple[object, ExecutionContext]] = []
 
-    def read(self, request: object, context: ExecutionContext) -> pl.LazyFrame:
+    def read(self, request, context: ExecutionContext) -> pl.LazyFrame:
         self.calls.append((request, context))
         return pl.DataFrame({'value': [3]}).lazy()
 

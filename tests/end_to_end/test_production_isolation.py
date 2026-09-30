@@ -11,7 +11,7 @@ from etlonomy import (
 )
 
 
-def test_missing_test_fixture_cannot_fall_back_to_production() -> None:
+def test_missing_test_fixture_cannot_fall_back_to_production() :
     provider = TestDatasetProvider({})
     request = read(DatasetId('CLAIMS', 'CLAIM_LINE'), 'person_id')
 

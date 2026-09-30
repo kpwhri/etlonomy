@@ -30,12 +30,7 @@ class CatalogLineageSource(Protocol):
         """Return the logical datasets available in the catalog."""
         ...
 
-    def resolve_dataset(
-            self,
-            dataset: DatasetId,
-            as_of: date | None = None,
-            version: int | None = None,
-    ) -> object:
+    def resolve_dataset(self, dataset: DatasetId, as_of: date | None = None, version: int | None = None):
         """Resolve the dataset version used for lineage."""
         ...
 
@@ -47,30 +42,20 @@ class CatalogLineageSource(Protocol):
 class LineageGraph:
     """Represent directed dependencies from upstream to downstream datasets."""
 
-    def __init__(self) -> None:
+    def __init__(self):
         """Create an empty directed lineage graph."""
         self._parents: dict[LineageDatasetId, set[LineageDatasetId]] = {}
         self._children: dict[LineageDatasetId, set[LineageDatasetId]] = {}
         self._job_reads: dict[str, set[DatasetId]] = {}
         self._job_declared_reads: dict[str, set[DatasetId]] = {}
         self._job_external_reads: dict[str, set[ExternalDatasetId]] = {}
-        self._job_declared_external_reads: dict[
-            str, set[ExternalDatasetId]
-        ] = {}
-        self._job_functions: dict[str, tuple[Callable[..., object], ...]] = {}
-        self._function_functions: dict[
-            Callable[..., object], tuple[Callable[..., object], ...]
-        ] = {}
-        self._function_reads: dict[Callable[..., object], set[DatasetId]] = {}
-        self._function_external_reads: dict[
-            Callable[..., object], set[ExternalDatasetId]
-        ] = {}
+        self._job_declared_external_reads: dict[str, set[ExternalDatasetId]] = {}
+        self._job_functions: dict[str, tuple[Callable, ...]] = {}
+        self._function_functions: dict[Callable, tuple[Callable, ...]] = {}
+        self._function_reads: dict[Callable, set[DatasetId]] = {}
+        self._function_external_reads: dict[Callable, set[ExternalDatasetId]] = {}
 
-    def add_dependency(
-            self,
-            dataset: LineageDatasetId,
-            upstream: Iterable[LineageDatasetId],
-    ) -> None:
+    def add_dependency(self, dataset: LineageDatasetId, upstream: Iterable[LineageDatasetId]):
         """Declare direct upstream datasets and reject dependency cycles."""
         parents = set(upstream)
         if dataset in parents:
@@ -87,35 +72,23 @@ class LineageGraph:
                 self._children[parent].discard(dataset)
             raise
 
-    def parents(
-            self, dataset: LineageDatasetId
-    ) -> tuple[LineageDatasetId, ...]:
+    def parents(self, dataset: LineageDatasetId) -> tuple[LineageDatasetId, ...]:
         """Return direct upstream datasets in canonical-name order."""
         return self._ordered(self._parents.get(dataset, set()))
 
-    def children(
-            self, dataset: LineageDatasetId
-    ) -> tuple[LineageDatasetId, ...]:
+    def children(self, dataset: LineageDatasetId) -> tuple[LineageDatasetId, ...]:
         """Return direct downstream datasets in canonical-name order."""
         return self._ordered(self._children.get(dataset, set()))
 
-    def ancestors(
-            self, dataset: LineageDatasetId
-    ) -> tuple[LineageDatasetId, ...]:
+    def ancestors(self, dataset: LineageDatasetId) -> tuple[LineageDatasetId, ...]:
         """Return every transitive upstream dataset deterministically."""
         return self._walk(dataset, self._parents)
 
-    def descendants(
-            self, dataset: LineageDatasetId
-    ) -> tuple[LineageDatasetId, ...]:
+    def descendants(self, dataset: LineageDatasetId) -> tuple[LineageDatasetId, ...]:
         """Return every transitive downstream dataset deterministically."""
         return self._walk(dataset, self._children)
 
-    def consumers(
-            self,
-            dataset: LineageDatasetId,
-            job_registry: Registry = registry,
-    ) -> tuple[str, ...]:
+    def consumers(self, dataset: LineageDatasetId, job_registry: Registry = registry) -> tuple[str, ...]:
         """Return ETL jobs that directly or transitively use a dataset."""
         declared = {
             definition.name
@@ -134,11 +107,7 @@ class LineageGraph:
         }
         return tuple(sorted(declared | indirect | traced))
 
-    def external_consumers(
-            self,
-            dataset: ExternalDatasetId,
-            job_registry: Registry = registry,
-    ) -> tuple[str, ...]:
+    def external_consumers(self, dataset: ExternalDatasetId, job_registry: Registry = registry) -> tuple[str, ...]:
         """Return ETL jobs that use an externally loaded dataset."""
         return self.consumers(dataset, job_registry)
 
@@ -154,17 +123,13 @@ class LineageGraph:
         """Return external datasets observed while executing an ETL job."""
         return self._ordered_external(self._job_external_reads.get(job_name, set()))
 
-    def declared_external_uses(
-            self, job_name: str
-    ) -> tuple[ExternalDatasetId, ...]:
+    def declared_external_uses(self, job_name: str) -> tuple[ExternalDatasetId, ...]:
         """Return direct and transitive external datasets declared by a job."""
-        return self._ordered_external(
-            self._job_declared_external_reads.get(job_name, set())
-        )
+        return self._ordered_external(self._job_declared_external_reads.get(job_name, set()))
 
     def used_functions(self, job_name: str) -> tuple[str, ...]:
         """Return reusable functions transitively declared by an ETL job."""
-        found: set[Callable[..., object]] = set()
+        found: set[Callable] = set()
         pending = list(self._job_functions.get(job_name, ()))
         while pending:
             function = pending.pop()
@@ -174,12 +139,7 @@ class LineageGraph:
             pending.extend(self._function_functions.get(function, ()))
         return tuple(sorted(function.__qualname__ for function in found))
 
-    def add_runtime_trace(
-            self,
-            job_name: str,
-            outputs: Iterable[DatasetId],
-            reads: Iterable[DependencyRead],
-    ) -> None:
+    def add_runtime_trace(self, job_name: str, outputs: Iterable[DatasetId], reads: Iterable[DependencyRead]):
         """Record a completed ETL's dataset uses and output lineage."""
         requests = tuple(reads)
         self._job_reads.setdefault(job_name, set()).update(
@@ -192,15 +152,13 @@ class LineageGraph:
         )
         self.add_job_dependencies(outputs, requests)
 
-    def add_job_dependencies(
-            self, outputs: Iterable[DatasetId], reads: Iterable[DependencyRead]
-    ) -> None:
+    def add_job_dependencies(self, outputs: Iterable[DatasetId], reads: Iterable[DependencyRead]):
         """Add lineage observed or declared for one ETL job execution."""
         upstream = {request.dataset for request in reads}
         for output in outputs:
             self.add_dependency(output, upstream)
 
-    def add_registry(self, job_registry: Registry = registry) -> None:
+    def add_registry(self, job_registry: Registry = registry):
         """Add every registered ETL's declared dataset edges and direct uses."""
         for requirement in job_registry.requirements:
             self._function_functions[requirement.function] = requirement.uses
@@ -234,9 +192,7 @@ class LineageGraph:
             for output in definition.outputs:
                 self.add_dependency(output, declared | declared_external)
 
-    def declaration_edges(
-            self, job_name: str, job_registry: Registry = registry
-    ) -> tuple[tuple[str, str], ...]:
+    def declaration_edges(self, job_name: str, job_registry: Registry = registry) -> tuple[tuple[str, str], ...]:
         """Return typed declaration edges for a job and its reusable functions."""
         definition = job_registry.get_etl(job_name)
         edges: set[tuple[str, str]] = set()
@@ -248,7 +204,7 @@ class LineageGraph:
         for output in definition.outputs:
             edges.add((job_node, str(output)))
         pending = list(definition.uses)
-        visited: set[Callable[..., object]] = set()
+        visited: set[Callable] = set()
         while pending:
             function = pending.pop()
             if function in visited:
@@ -266,11 +222,9 @@ class LineageGraph:
                 pending.append(used)
         return tuple(sorted(edges))
 
-    def _datasets_for_functions(
-            self, functions: Iterable[Callable[..., object]]
-    ) -> set[DatasetId]:
+    def _datasets_for_functions(self, functions: Iterable[Callable]) -> set[DatasetId]:
         datasets: set[DatasetId] = set()
-        visited: set[Callable[..., object]] = set()
+        visited: set[Callable] = set()
         pending = list(functions)
         while pending:
             function = pending.pop()
@@ -281,11 +235,9 @@ class LineageGraph:
             pending.extend(self._function_functions.get(function, ()))
         return datasets
 
-    def _external_datasets_for_functions(
-            self, functions: Iterable[Callable[..., object]]
-    ) -> set[ExternalDatasetId]:
+    def _external_datasets_for_functions(self, functions: Iterable[Callable]) -> set[ExternalDatasetId]:
         datasets: set[ExternalDatasetId] = set()
-        visited: set[Callable[..., object]] = set()
+        visited: set[Callable] = set()
         pending = list(functions)
         while pending:
             function = pending.pop()
@@ -296,9 +248,7 @@ class LineageGraph:
             pending.extend(self._function_functions.get(function, ()))
         return datasets
 
-    def add_catalog(
-            self, catalog: CatalogLineageSource, as_of: date | None = None
-    ) -> None:
+    def add_catalog(self, catalog: CatalogLineageSource, as_of: date | None = None):
         """Add manifest-declared dependencies for resolved catalog versions."""
         for dataset in catalog.list_datasets():
             resolved = cast(
@@ -309,11 +259,7 @@ class LineageGraph:
                 raise TypeError('resolved catalog dataset has no version identifier')
             self.add_dependency(dataset, catalog.get_dependencies(version_id))
 
-    def requirement_consumers(
-            self,
-            dataset: LineageDatasetId,
-            job_registry: Registry = registry,
-    ) -> tuple[str, ...]:
+    def requirement_consumers(self, dataset: LineageDatasetId, job_registry: Registry = registry) -> tuple[str, ...]:
         """Return reusable functions that declare a read of the dataset."""
         names = {
             definition.function.__qualname__
@@ -322,31 +268,21 @@ class LineageGraph:
         }
         return tuple(sorted(names))
 
-    def external_requirement_consumers(
-            self,
-            dataset: ExternalDatasetId,
-            job_registry: Registry = registry,
-    ) -> tuple[str, ...]:
+    def external_requirement_consumers(self, dataset: ExternalDatasetId, job_registry: Registry = registry) -> tuple[
+        str, ...]:
         """Return reusable functions that declare an external dataset read."""
         return self.requirement_consumers(dataset, job_registry)
 
     @staticmethod
-    def _ordered(
-            datasets: Iterable[LineageDatasetId],
-    ) -> tuple[LineageDatasetId, ...]:
+    def _ordered(datasets: Iterable[LineageDatasetId]) -> tuple[LineageDatasetId, ...]:
         return tuple(sorted(datasets, key=lambda item: item.canonical_name))
 
     @staticmethod
-    def _ordered_external(
-            datasets: Iterable[ExternalDatasetId],
-    ) -> tuple[ExternalDatasetId, ...]:
+    def _ordered_external(datasets: Iterable[ExternalDatasetId]) -> tuple[ExternalDatasetId, ...]:
         return tuple(sorted(datasets, key=lambda item: item.canonical_name))
 
-    def _walk(
-            self,
-            dataset: LineageDatasetId,
-            edges: dict[LineageDatasetId, set[LineageDatasetId]],
-    ) -> tuple[LineageDatasetId, ...]:
+    def _walk(self, dataset: LineageDatasetId, edges: dict[LineageDatasetId, set[LineageDatasetId]]) -> tuple[
+        LineageDatasetId, ...]:
         found: set[LineageDatasetId] = set()
         pending = list(edges.get(dataset, set()))
         while pending:
@@ -357,11 +293,11 @@ class LineageGraph:
             pending.extend(edges.get(current, set()))
         return self._ordered(found)
 
-    def _assert_acyclic(self) -> None:
+    def _assert_acyclic(self):
         visiting: set[LineageDatasetId] = set()
         visited: set[LineageDatasetId] = set()
 
-        def visit(dataset: LineageDatasetId) -> None:
+        def visit(dataset: LineageDatasetId):
             if dataset in visiting:
                 raise DependencyCycleError(f'dependency cycle includes {dataset}')
             if dataset in visited:
@@ -379,7 +315,7 @@ class LineageGraph:
         job_names = self._job_reads.keys() | self._job_external_reads.keys()
         return {
             job_name: set(self._job_reads.get(job_name, set()))
-            | set(self._job_external_reads.get(job_name, set()))
+                      | set(self._job_external_reads.get(job_name, set()))
             for job_name in job_names
         }
 
@@ -390,6 +326,6 @@ class LineageGraph:
         )
         return {
             job_name: set(self._job_declared_reads.get(job_name, set()))
-            | set(self._job_declared_external_reads.get(job_name, set()))
+                      | set(self._job_declared_external_reads.get(job_name, set()))
             for job_name in job_names
         }

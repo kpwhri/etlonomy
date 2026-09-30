@@ -25,21 +25,21 @@ from etlonomy.runtime import Runtime, get_active_runtime
 
 
 class RecordingExternalProvider:
-    def __init__(self, value: object):
+    def __init__(self, value):
         self.value = value
         self.calls: list[tuple[ExternalRead, ExecutionContext]] = []
 
-    def read(self, request: ExternalRead, context: ExecutionContext) -> object:
+    def read(self, request: ExternalRead, context: ExecutionContext):
         self.calls.append((request, context))
         return self.value
 
 
 class SourceViewProvider:
-    def __init__(self, source_view: dict[str, object]):
+    def __init__(self, source_view: dict):
         self.source_view = source_view
         self.calls: list[tuple[ExternalRead, ExecutionContext]] = []
 
-    def read(self, request: ExternalRead, context: ExecutionContext) -> object:
+    def read(self, request: ExternalRead, context: ExecutionContext):
         self.calls.append((request, context))
         return self.source_view[request.dataset.name]
 
@@ -59,10 +59,9 @@ def test_external_dataset_id_rejects_invalid_system(system: str):
         ExternalDatasetId(system, 'sv.claims')
 
 
-@pytest.mark.parametrize(
-    'name',
-    ['', ' sv.claims', 'sv.claims ', 'sv.\nclaims', 'sv.\x00claims', 'sv.\x7fclaims'],
-)
+@pytest.mark.parametrize('name', [
+    '', ' sv.claims', 'sv.claims ', 'sv.\nclaims', 'sv.\x00claims', 'sv.\x7fclaims'
+])
 def test_external_dataset_id_rejects_invalid_name(name: str):
     with pytest.raises(ValueError, match='external dataset name'):
         ExternalDatasetId('files', name)
@@ -91,17 +90,12 @@ def test_external_read_records_requested_columns():
     assert request == ExternalRead(dataset, ('person_id', 'service_date'))
 
 
-@pytest.mark.parametrize(
-    ('columns', 'message'),
-    [
-        ((), 'at least one'),
-        (('person_id', ''), 'must not be empty'),
-        (('person_id', 'person_id'), 'must be unique'),
-    ],
-)
-def test_external_read_rejects_invalid_columns(
-        columns: tuple[str, ...], message: str
-):
+@pytest.mark.parametrize(('columns', 'message'), [
+    ((), 'at least one'),
+    (('person_id', ''), 'must not be empty'),
+    (('person_id', 'person_id'), 'must be unique'),
+])
+def test_external_read_rejects_invalid_columns(columns: tuple[str, ...], message: str):
     dataset = ExternalDatasetId('files', 'sv.claims')
 
     with pytest.raises(ValueError, match=message):
@@ -117,12 +111,7 @@ def test_runtime_routes_external_read_and_records_dependency():
     job_registry = Registry()
     job_registry.register_etl(
         EtlDefinition(
-            'external.load',
-            lambda claims: claims,
-            {'claims': request},
-            (),
-            None,
-            None,
+            'external.load', lambda claims: claims, {'claims': request}, (), None, None,
         )
     )
     context = ExecutionContext('test', date(2026, 1, 1))
@@ -151,9 +140,7 @@ def test_runtime_routes_multiple_systems_and_resources_to_matching_providers():
             'external.multiple',
             lambda claims, providers, regions: (claims, providers, regions),
             {'claims': first, 'providers': second, 'regions': third},
-            (),
-            None,
-            None,
+            (), None, None,
         )
     )
     runtime = Runtime(
@@ -187,9 +174,7 @@ def test_runtime_resolves_two_column_requests_for_same_external_dataset():
             'external.same_dataset',
             lambda ids, codes: (ids, codes),
             {'ids': identifiers, 'codes': diagnoses},
-            (),
-            None,
-            None,
+            (), None, None,
         )
     )
     runtime = Runtime(
@@ -212,12 +197,7 @@ def test_runtime_copies_external_provider_mapping_at_construction():
     job_registry = Registry()
     job_registry.register_etl(
         EtlDefinition(
-            'external.mapping',
-            lambda claims: claims,
-            {'claims': request},
-            (),
-            None,
-            None,
+            'external.mapping', lambda claims: claims, {'claims': request}, (), None, None,
         )
     )
     runtime = Runtime(
@@ -242,12 +222,7 @@ def test_explicit_external_etl_argument_skips_provider_and_keeps_columns():
     job_registry = Registry()
     job_registry.register_etl(
         EtlDefinition(
-            'external.override',
-            lambda claims: claims,
-            {'claims': request},
-            (),
-            None,
-            None,
+            'external.override', lambda claims: claims, {'claims': request}, (), None, None,
         )
     )
     external_provider = RecordingExternalProvider(object())
@@ -273,12 +248,7 @@ def test_runtime_reports_missing_external_provider_without_recording_read():
     job_registry = Registry()
     job_registry.register_etl(
         EtlDefinition(
-            'external.missing',
-            lambda claims: claims,
-            {'claims': request},
-            (),
-            None,
-            None,
+            'external.missing', lambda claims: claims, {'claims': request}, (), None, None,
         )
     )
     runtime = Runtime(
@@ -341,7 +311,7 @@ def test_external_provider_failure_preserves_trace_and_clears_runtime():
     failing = external_read(ExternalDatasetId('files', 'sv.bad'), 'person_id')
 
     class ConditionalProvider:
-        def read(self, request: ExternalRead, context: ExecutionContext) -> object:
+        def read(self, request: ExternalRead, context: ExecutionContext):
             del context
             if request == failing:
                 raise ValueError('external read failed')
@@ -409,7 +379,7 @@ def test_nested_requires_resolves_external_dataset_and_records_trace(monkeypatch
     request = external_read(ExternalDatasetId('files', 'sv.claims'), 'person_id')
 
     @etlonomy.requires(claims=request)
-    def attach_claims(seed: str, claims: object) -> tuple[str, object]:
+    def attach_claims(seed: str, claims) -> tuple[str, object]:
         return seed, claims
 
     @etlonomy.requires(uses=(attach_claims,))
@@ -443,7 +413,7 @@ def test_requires_builds_external_provider_from_function_argument(monkeypatch):
     other = external_read(ExternalDatasetId('vdwcore', 'sv.other'), 'code')
     created: list[SourceViewProvider] = []
 
-    def provider_factory(source_view: dict[str, object]) -> SourceViewProvider:
+    def provider_factory(source_view: dict) -> SourceViewProvider:
         provider = SourceViewProvider(source_view)
         created.append(provider)
         return provider
@@ -455,12 +425,7 @@ def test_requires_builds_external_provider_from_function_argument(monkeypatch):
         claims=claims,
         other=other,
     )
-    def combine(
-            *,
-            claims: object,
-            other: object,
-            sv: dict[str, object] | None = None,
-    ) -> tuple[object, object]:
+    def combine(*, claims, other, sv: dict | None = None) -> tuple:
         del sv
         return claims, other
 
@@ -482,7 +447,7 @@ def test_call_bound_provider_is_inherited_by_nested_requires(monkeypatch):
     request = external_read(ExternalDatasetId('vdwcore', 'sv.claims'), 'person_id')
 
     @etlonomy.requires(claims=request)
-    def inner(*, claims: object) -> object:
+    def inner(*, claims):
         return claims
 
     @etlonomy.requires(
@@ -491,7 +456,7 @@ def test_call_bound_provider_is_inherited_by_nested_requires(monkeypatch):
             'vdwcore': ExternalProviderBinding('sv', SourceViewProvider),
         },
     )
-    def outer(*, sv: dict[str, object] | None = None) -> object:
+    def outer(*, sv: dict | None = None):
         del sv
         return inner()
 
@@ -505,7 +470,7 @@ def test_call_bound_provider_overrides_runtime_and_records_dependency(monkeypatc
 
     created: list[SourceViewProvider] = []
 
-    def provider_factory(source_view: dict[str, object]) -> SourceViewProvider:
+    def provider_factory(source_view: dict) -> SourceViewProvider:
         provider = SourceViewProvider(source_view)
         created.append(provider)
         return provider
@@ -516,14 +481,12 @@ def test_call_bound_provider_overrides_runtime_and_records_dependency(monkeypatc
         },
         claims=request,
     )
-    def helper(
-            *, claims: object, sv: dict[str, object] | None = None
-    ) -> object:
+    def helper(*, claims, sv: dict | None = None):
         del sv
         return claims
 
     @etlonomy.etl(name='external.bound', inputs={}, uses=(helper,))
-    def job() -> object:
+    def job():
         return helper(sv={'sv.claims': 'call-bound claims'})
 
     runtime_provider = RecordingExternalProvider('runtime claims')
@@ -552,14 +515,12 @@ def test_binding_omitted_falls_back_to_active_runtime(monkeypatch):
         },
         claims=request,
     )
-    def helper(
-            *, claims: object, sv: dict[str, object] | None = None
-    ) -> object:
+    def helper(*, claims, sv: dict | None = None):
         del sv
         return claims
 
     @etlonomy.etl(name='external.fallback', inputs={}, uses=(helper,))
-    def job() -> object:
+    def job():
         return helper()
 
     runtime_provider = RecordingExternalProvider('runtime claims')
@@ -580,7 +541,7 @@ def test_explicit_input_still_wins_when_provider_argument_is_supplied(monkeypatc
     request = external_read(ExternalDatasetId('vdwcore', 'sv.claims'), 'person_id')
     created: list[SourceViewProvider] = []
 
-    def provider_factory(source_view: dict[str, object]) -> SourceViewProvider:
+    def provider_factory(source_view: dict) -> SourceViewProvider:
         provider = SourceViewProvider(source_view)
         created.append(provider)
         return provider
@@ -591,9 +552,7 @@ def test_explicit_input_still_wins_when_provider_argument_is_supplied(monkeypatc
         },
         claims=request,
     )
-    def helper(
-            *, claims: object, sv: dict[str, object] | None = None
-    ) -> object:
+    def helper(*, claims, sv: dict | None = None):
         del sv
         return claims
 
@@ -604,13 +563,71 @@ def test_explicit_input_still_wins_when_provider_argument_is_supplied(monkeypatc
     assert created[0].calls == []
 
 
+def test_none_input_is_resolved_by_call_bound_provider(monkeypatch):
+    job_registry = Registry()
+    monkeypatch.setattr('etlonomy.decorators.registry', job_registry)
+    request = external_read(ExternalDatasetId('vdwcore', 'sv.claims'), 'person_id')
+    created: list[SourceViewProvider] = []
+
+    def provider_factory(source_view: dict) -> SourceViewProvider:
+        provider = SourceViewProvider(source_view)
+        created.append(provider)
+        return provider
+
+    @etlonomy.requires(
+        external_provider_bindings={
+            'vdwcore': ExternalProviderBinding('sv', provider_factory),
+        },
+        claims=request,
+    )
+    def helper(*, claims, sv: dict | None = None):
+        del sv
+        return claims
+
+    source_view = {'sv.claims': 'claims'}
+
+    assert helper(sv=source_view, claims=None) == 'claims'
+    assert created[0].calls == [(request, ExecutionContext())]
+
+
+def test_none_binding_argument_falls_back_to_runtime_provider(monkeypatch):
+    job_registry = Registry()
+    monkeypatch.setattr('etlonomy.decorators.registry', job_registry)
+    request = external_read(ExternalDatasetId('vdwcore', 'sv.claims'), 'person_id')
+
+    @etlonomy.requires(
+        external_provider_bindings={
+            'vdwcore': ExternalProviderBinding('sv', SourceViewProvider),
+        },
+        claims=request,
+    )
+    def helper(*, claims=None, sv: dict | None = None):
+        del sv
+        return claims
+
+    @etlonomy.etl(name='external.none_binding', inputs={}, uses=(helper,))
+    def job():
+        return helper(sv=None, claims=None)
+
+    runtime_provider = RecordingExternalProvider('runtime claims')
+    runtime = Runtime(
+        provider=TestDatasetProvider({}),
+        external_providers={'vdwcore': runtime_provider},
+        context=ExecutionContext('test'),
+        job_registry=job_registry,
+    )
+
+    assert runtime.run('external.none_binding') == 'runtime claims'
+    assert runtime_provider.calls == [(request, ExecutionContext('test'))]
+
+
 def test_call_bound_provider_scope_is_cleared_after_failure(monkeypatch):
     job_registry = Registry()
     monkeypatch.setattr('etlonomy.decorators.registry', job_registry)
     request = external_read(ExternalDatasetId('vdwcore', 'sv.claims'), 'person_id')
 
     @etlonomy.requires(claims=request)
-    def inner(*, claims: object) -> object:
+    def inner(*, claims: object):
         return claims
 
     @etlonomy.requires(
@@ -619,7 +636,7 @@ def test_call_bound_provider_scope_is_cleared_after_failure(monkeypatch):
             'vdwcore': ExternalProviderBinding('sv', SourceViewProvider),
         },
     )
-    def fail(*, sv: dict[str, object] | None = None) -> None:
+    def fail(*, sv: dict | None = None):
         del sv
         inner()
         raise ValueError('function failed')
@@ -638,9 +655,7 @@ def test_call_bound_provider_scope_is_cleared_after_failure(monkeypatch):
     ),
     ({'vdwcore': object()}, 'must be ExternalProviderBinding'),
 ])
-def test_requires_rejects_invalid_external_provider_bindings(
-        monkeypatch, binding: object, message: str
-):
+def test_requires_rejects_invalid_external_provider_bindings(monkeypatch, binding, message: str):
     monkeypatch.setattr('etlonomy.decorators.registry', Registry())
 
     with pytest.raises(RegistryError, match=message):
@@ -663,7 +678,7 @@ def test_requires_validates_binding_argument_against_function_signature(monkeypa
     request = external_read(ExternalDatasetId('vdwcore', 'sv.claims'), 'person_id')
     with pytest.raises(RegistryError, match='cannot also be declared inputs'):
         @etlonomy.requires(external_provider_bindings=binding, sv=request)
-        def conflicting_argument(sv: object):
+        def conflicting_argument(sv):
             del sv
 
 

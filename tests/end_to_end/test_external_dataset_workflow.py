@@ -38,9 +38,7 @@ class FileDatasetProvider:
         self._resources = {'warehouse.claims': source_view.claims}
         self.requests: list[ExternalRead] = []
 
-    def read(
-            self, request: ExternalRead, context: ExecutionContext
-    ) -> pl.LazyFrame:
+    def read(self, request: ExternalRead, context: ExecutionContext) -> pl.LazyFrame:
         del context
         self.requests.append(request)
         dataset = self._resources[request.dataset.name]

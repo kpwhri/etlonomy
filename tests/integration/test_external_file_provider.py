@@ -39,9 +39,7 @@ class FileExternalDatasetProvider:
         self.source_view = source_view
         self.requests: list[ExternalRead] = []
 
-    def read(
-            self, request: ExternalRead, context: ExecutionContext
-    ) -> pl.LazyFrame:
+    def read(self, request: ExternalRead, context: ExecutionContext) -> pl.LazyFrame:
         del context
         self.requests.append(request)
         resources = {

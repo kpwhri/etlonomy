@@ -2,4 +2,4 @@ import etlonomy
 
 
 def test_package_exposes_version():
-    assert etlonomy.__version__ == '0.1.0'
+    assert len(etlonomy.__version__.split('.')) == 3

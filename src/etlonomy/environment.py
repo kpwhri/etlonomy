@@ -1,7 +1,6 @@
 """Environment-specific roots and SQL connections compiled into a catalog."""
 
 import tomllib
-from collections.abc import Mapping
 from dataclasses import dataclass
 from difflib import get_close_matches
 from pathlib import Path
@@ -47,30 +46,26 @@ class EnvironmentDefinition:
     connections: tuple[ConnectionDefinition, ...] = ()
 
 
-def _required_string(value: object, field_name: str) -> str:
+def _required_string(value, field_name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ManifestError(f'{field_name} must be a non-empty string')
     return value
 
 
-def _optional_string(value: object, field_name: str) -> str | None:
+def _optional_string(value, field_name: str) -> str | None:
     if value is None:
         return None
     return _required_string(value, field_name)
 
 
-def _reject_unknown_fields(
-        value: Mapping[str, object], allowed: frozenset[str], context: str
-) -> None:
+def _reject_unknown_fields(value: dict, allowed: frozenset[str], context: str):
     for field_name in value.keys() - allowed:
         suggestion = get_close_matches(field_name, allowed, n=1)
         hint = f'; did you mean {suggestion[0]!r}?' if suggestion else ''
         raise ManifestError(f'unknown {context} field {field_name!r}{hint}')
 
 
-def _named_tables(
-        value: object, field_name: str
-) -> tuple[tuple[str, Mapping[str, object]], ...]:
+def _named_tables(value, field_name: str) -> tuple[tuple[str, dict], ...]:
     if value is None:
         return ()
     if not isinstance(value, dict):
@@ -137,9 +132,7 @@ def load_environment(path: Path) -> EnvironmentDefinition:
         raise ManifestError(f'cannot read environment configuration {path}: {error}') from error
 
 
-def validate_environment_references(
-        manifest: Manifest, environment: EnvironmentDefinition
-) -> None:
+def validate_environment_references(manifest: Manifest, environment: EnvironmentDefinition):
     """Validate every shared root and connection referenced by a manifest."""
     roots = {item.name for item in environment.roots}
     connections = {item.name: item for item in environment.connections}

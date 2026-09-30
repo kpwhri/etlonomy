@@ -30,7 +30,7 @@ def _insert_manifest(
         connection: sqlite3.Connection,
         manifest: Manifest,
         environment: EnvironmentDefinition,
-) -> None:
+) :
     for root in environment.roots:
         connection.execute(
             'INSERT INTO roots (root_name, base_uri) VALUES (?, ?)',
@@ -112,7 +112,7 @@ def _catalog_hash(
     return hashlib.sha256(serializable).hexdigest()
 
 
-def _catalog_value(value: object) -> object:
+def _catalog_value(value) :
     if is_dataclass(value) and not isinstance(value, type):
         return {
             item.name: _catalog_value(getattr(value, item.name))

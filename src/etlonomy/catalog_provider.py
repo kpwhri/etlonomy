@@ -27,12 +27,7 @@ from etlonomy.models import DatasetId, ExecutionContext, Read
 class CatalogResolver(Protocol):
     """Resolve a logical read to catalog version metadata."""
 
-    def resolve_dataset(
-            self,
-            dataset: DatasetId,
-            as_of: date | None = None,
-            version: int | None = None,
-    ) -> object:
+    def resolve_dataset(self, dataset: DatasetId, as_of: date | None = None, version: int | None = None):
         """Return metadata for the selected physical dataset version."""
         ...
 
@@ -47,7 +42,7 @@ class CatalogDatasetProvider:
             credential_provider: CredentialProvider | None = None,
             sas_reader: SasReader | None = None,
             adapters: Mapping[str, SourceAdapter] | None = None,
-    ) -> None:
+    ):
         """Configure catalog resolution and physical source boundaries."""
         self._catalog = catalog
         if adapters is None:
@@ -74,7 +69,7 @@ class CatalogDatasetProvider:
             ) from error
         return adapter.read(source, request.columns)
 
-    def _validate_environment(self, context: ExecutionContext) -> None:
+    def _validate_environment(self, context: ExecutionContext):
         if context.environment is None:
             return
         getter = getattr(self._catalog, 'get_environment', None)
@@ -95,7 +90,7 @@ class CatalogDatasetProvider:
                 f'catalog environment {catalog_environment!r}'
             )
 
-    def _resolve(self, request: Read, context: ExecutionContext) -> object:
+    def _resolve(self, request: Read, context: ExecutionContext):
         return self._catalog.resolve_dataset(
             request.dataset,
             as_of=context.as_of,
@@ -103,7 +98,7 @@ class CatalogDatasetProvider:
         )
 
 
-def _normalize_source(resolved: object, catalog: object) -> AdapterSource:
+def _normalize_source(resolved, catalog) -> AdapterSource:
     source_type = _attribute(resolved, 'source_type')
     if not isinstance(source_type, str):
         raise DatasetProviderError('Resolved dataset has no valid source type')
@@ -130,7 +125,7 @@ def _normalize_source(resolved: object, catalog: object) -> AdapterSource:
     )
 
 
-def _resolve_root(catalog: object, name: str, source_uri: object) -> str:
+def _resolve_root(catalog, name: str, source_uri) -> str:
     if not isinstance(source_uri, str):
         raise DatasetProviderError(f'file root {name!r} requires a relative source_uri')
     getter = getattr(catalog, 'get_root', None)
@@ -153,7 +148,7 @@ def _resolve_root(catalog: object, name: str, source_uri: object) -> str:
     return str(resolved)
 
 
-def _path_from_uri(value: object) -> Path:
+def _path_from_uri(value) -> Path:
     if not isinstance(value, str):
         raise DatasetProviderError('catalog contains an invalid file root')
     direct = Path(value)
@@ -170,7 +165,7 @@ def _path_from_uri(value: object) -> Path:
     return Path(value)
 
 
-def _resolve_connection(catalog: object, name: str) -> tuple[str, str | None]:
+def _resolve_connection(catalog, name: str) -> tuple[str, str | None]:
     getter = getattr(catalog, 'get_connection', None)
     if getter is None:
         raise DatasetProviderError('catalog does not support shared SQL connections')
@@ -185,7 +180,7 @@ def _resolve_connection(catalog: object, name: str) -> tuple[str, str | None]:
     return value
 
 
-def _options(resolved: object) -> Mapping[str, object]:
+def _options(resolved) -> Mapping[str, object]:
     value = _attribute(resolved, 'options', None)
     if isinstance(value, Mapping):
         return value
@@ -203,7 +198,7 @@ def _options(resolved: object) -> Mapping[str, object]:
     return decoded
 
 
-def _column_mappings(resolved: object) -> dict[str, str]:
+def _column_mappings(resolved) -> dict[str, str]:
     value = _attribute(resolved, 'columns', {})
     if isinstance(value, Mapping):
         return {
@@ -218,7 +213,7 @@ def _column_mappings(resolved: object) -> dict[str, str]:
     return mappings
 
 
-def _source_name(metadata: object, default: str) -> str:
+def _source_name(metadata, default: str) -> str:
     if isinstance(metadata, str):
         return metadata
     value = _attribute(metadata, 'source_name', None)
@@ -227,7 +222,7 @@ def _source_name(metadata: object, default: str) -> str:
     return value if isinstance(value, str) and value else default
 
 
-def _attribute(value: object, name: str, default: object = None) -> object:
+def _attribute(value, name: str, default = None):
     if isinstance(value, Mapping):
         return value.get(name, default)
     return getattr(value, name, default)

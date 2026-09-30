@@ -5,19 +5,17 @@ import re
 from collections.abc import Callable, Mapping
 from functools import wraps
 from pathlib import Path
-from typing import ParamSpec, TypeVar, cast
+from typing import cast
 
 from etlonomy.exceptions import RegistryError
 from etlonomy.models import DatasetId, DependencyRead, ExternalDatasetId
 from etlonomy.providers import ExternalProviderBinding
 from etlonomy.registry import EtlDefinition, RequirementDefinition, registry
 
-P = ParamSpec('P')
-R = TypeVar('R')
 _ETL_NAME = re.compile(r'^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$')
 
 
-def _source(function: Callable[..., object]) -> tuple[Path | None, int | None]:
+def _source(function: Callable) -> tuple[Path | None, int | None]:
     try:
         path = inspect.getsourcefile(function)
         _, line = inspect.getsourcelines(function)
@@ -26,9 +24,7 @@ def _source(function: Callable[..., object]) -> tuple[Path | None, int | None]:
     return Path(path) if path else None, line
 
 
-def _validate_inputs(
-        function: Callable[..., object], inputs: Mapping[str, DependencyRead]
-) -> None:
+def _validate_inputs(function: Callable, inputs: Mapping[str, DependencyRead]):
     parameters = inspect.signature(function).parameters
     missing = sorted(set(inputs) - set(parameters))
     if missing:
@@ -44,20 +40,20 @@ def etl(
         name: str,
         inputs: Mapping[str, DependencyRead],
         outputs: tuple[DatasetId, ...] = (),
-        uses: tuple[Callable[..., object], ...] = (),
-) -> Callable[[Callable[P, R]], Callable[P, R]]:
+        uses: tuple[Callable, ...] = (),
+):
     """Declare and register a top-level ETL job."""
     if not _ETL_NAME.fullmatch(name):
         raise RegistryError('ETL job names must be dotted lowercase names')
 
-    def decorate(function: Callable[P, R]) -> Callable[P, R]:
+    def decorate(function):
         if getattr(function, '__etlonomy_requirement__', False):
             raise RegistryError('a function cannot use both etl and requires')
         _validate_inputs(function, inputs)
         source_file, source_line = _source(function)
         definition = EtlDefinition(
             name=name,
-            function=cast(Callable[..., object], function),
+            function=cast(Callable, function),
             inputs=dict(inputs),
             outputs=tuple(outputs),
             source_file=source_file,
@@ -73,14 +69,14 @@ def etl(
 
 def requires(
         *,
-        uses: tuple[Callable[..., object], ...] = (),
+        uses: tuple[Callable, ...] = (),
         external_provider_bindings: Mapping[str, ExternalProviderBinding] | None = None,
         **inputs: DependencyRead,
-) -> Callable[[Callable[P, R]], Callable[P, R]]:
+):
     """Declare datasets injected into a reusable function.
 
-    Explicit inputs take precedence over call-bound and runtime providers. An external
-    provider binding can resolve its system without an active runtime.
+    Explicit non-None inputs take precedence over call-bound and runtime providers.
+    An external provider binding can resolve its system without an active runtime.
     """
     bindings = dict(external_provider_bindings or {})
     for system, binding in bindings.items():
@@ -97,19 +93,17 @@ def requires(
                 'external provider bindings must be ExternalProviderBinding values'
             )
 
-    def decorate(function: Callable[P, R]) -> Callable[P, R]:
+    def decorate(function: Callable) -> Callable:
         if getattr(function, '__etlonomy_etl__', False):
             raise RegistryError('a function cannot use both etl and requires')
         _validate_inputs(function, inputs)
         signature = inspect.signature(function)
         parameters = signature.parameters
-        missing_arguments = sorted(
-            {
-                binding.argument
-                for binding in bindings.values()
-                if binding.argument not in parameters
-            }
-        )
+        missing_arguments = sorted({
+            binding.argument
+            for binding in bindings.values()
+            if binding.argument not in parameters
+        })
         if missing_arguments:
             names = ', '.join(missing_arguments)
             raise RegistryError(
@@ -127,17 +121,20 @@ def requires(
             )
 
         @wraps(function)
-        def wrapped(*args: P.args, **kwargs: P.kwargs) -> R:
+        def wrapped(*args, **kwargs):
             bound = signature.bind_partial(*args, **kwargs)
             unresolved = {
                 name: request
                 for name, request in inputs.items()
-                if name not in bound.arguments
+                if name not in bound.arguments or bound.arguments[name] is None
             }
             providers = {
                 system: binding.create(bound.arguments[binding.argument])
                 for system, binding in bindings.items()
-                if binding.argument in bound.arguments
+                if (
+                        binding.argument in bound.arguments
+                        and bound.arguments[binding.argument] is not None
+                )
             }
             from etlonomy.runtime import (
                 _external_provider_scope,
@@ -146,14 +143,14 @@ def requires(
 
             with _external_provider_scope(providers):
                 if unresolved:
-                    kwargs.update(_resolve_requirement_inputs(unresolved))
-                return function(*args, **kwargs)
+                    bound.arguments.update(_resolve_requirement_inputs(unresolved))
+                return function(*bound.args, **bound.kwargs)
 
         object.__setattr__(wrapped, '__etlonomy_requirement__', True)
         source_file, source_line = _source(function)
         registry.register_requirement(
             RequirementDefinition(
-                function=cast(Callable[..., object], wrapped),
+                function=cast(Callable, wrapped),
                 inputs=dict(inputs),
                 source_file=source_file,
                 source_line=source_line,

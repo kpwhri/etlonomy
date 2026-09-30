@@ -41,10 +41,7 @@ def attach_region(
     uses=(attach_region,),
     outputs=(COHORT_RESULT,),
 )
-def build_cohort(
-        claims: pl.LazyFrame,
-        providers: pl.LazyFrame,
-) -> pl.LazyFrame:
+def build_cohort(claims: pl.LazyFrame, providers: pl.LazyFrame) -> pl.LazyFrame:
     """Keep diagnosed claims and attach each provider's region."""
     enriched_providers = attach_region(providers)
     return (

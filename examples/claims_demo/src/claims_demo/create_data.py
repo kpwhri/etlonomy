@@ -7,7 +7,7 @@ from pathlib import Path
 import polars as pl
 
 
-def create_sources(data_directory: Path = Path('data')) -> None:
+def create_sources(data_directory: Path = Path('data')):
     """Create claims, provider, and region sources without external services."""
     claims = pl.read_csv(data_directory / 'claim_line.csv')
     claims_parquet = data_directory / 'claim_line.parquet'

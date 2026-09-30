@@ -58,32 +58,17 @@ def test_lineage_returns_direct_etl_consumers_in_job_name_order():
     job_registry = Registry()
     job_registry.register_etl(
         EtlDefinition(
-            'z.consume',
-            lambda frame: frame,
-            {'frame': read(source, 'id')},
-            (),
-            None,
-            None,
+            'z.consume', lambda frame: frame, {'frame': read(source, 'id')}, (), None, None,
         )
     )
     job_registry.register_etl(
         EtlDefinition(
-            'a.consume',
-            lambda frame: frame,
-            {'frame': read(source, 'name')},
-            (),
-            None,
-            None,
+            'a.consume', lambda frame: frame, {'frame': read(source, 'name')}, (), None, None,
         )
     )
     job_registry.register_etl(
         EtlDefinition(
-            'm.other',
-            lambda frame: frame,
-            {'frame': read(unrelated, 'id')},
-            (),
-            None,
-            None,
+            'm.other', lambda frame: frame, {'frame': read(unrelated, 'id')}, (), None, None,
         )
     )
 
@@ -143,20 +128,13 @@ def test_lineage_loads_catalog_dependencies_and_reusable_consumers():
 
     job_registry = Registry()
     job_registry.register_requirement(
-        RequirementDefinition(
-            helper,
-            {'frame': read(source, 'id')},
-            None,
-            None,
-        )
+        RequirementDefinition(helper, {'frame': read(source, 'id')}, None, None)
     )
     graph = LineageGraph()
     graph.add_catalog(Catalog())
 
     assert graph.parents(output) == (source,)
-    assert graph.requirement_consumers(source, job_registry) == (
-        helper.__qualname__,
-    )
+    assert graph.requirement_consumers(source, job_registry) == (helper.__qualname__,)
 
 
 def test_lineage_expands_declared_function_uses_with_typed_edges():
@@ -174,30 +152,17 @@ def test_lineage_expands_declared_function_uses_with_typed_edges():
 
     job_registry.register_requirement(
         RequirementDefinition(
-            attach_provider,
-            {'providers': read(provider, 'provider_id')},
-            None,
-            None,
+            attach_provider, {'providers': read(provider, 'provider_id')}, None, None,
         )
     )
     job_registry.register_requirement(
         RequirementDefinition(
-            enrich,
-            {'diagnoses': read(diagnosis, 'diagnosis_code')},
-            None,
-            None,
-            (attach_provider,),
+            enrich, {'diagnoses': read(diagnosis, 'diagnosis_code')}, None, None, (attach_provider,),
         )
     )
     job_registry.register_etl(
         EtlDefinition(
-            'area.build',
-            lambda frame: frame,
-            {'frame': read(direct, 'id')},
-            (output,),
-            None,
-            None,
-            (enrich,),
+            'area.build', lambda frame: frame, {'frame': read(direct, 'id')}, (output,), None, None, (enrich,),
         )
     )
     graph = LineageGraph()
@@ -229,9 +194,7 @@ def test_external_dataset_participates_in_normal_lineage_traversal():
     output = dataset('OUTPUT')
     graph = LineageGraph()
 
-    graph.add_job_dependencies(
-        [intermediate], [external_read(external, 'person_id')]
-    )
+    graph.add_job_dependencies([intermediate], [external_read(external, 'person_id')])
     graph.add_dependency(output, [intermediate])
 
     assert graph.parents(intermediate) == (external,)
@@ -264,21 +227,13 @@ def test_normal_uses_queries_include_direct_and_required_external_datasets():
 
     job_registry.register_requirement(
         RequirementDefinition(
-            attach_provider,
-            {'providers': external_read(required, 'provider_id')},
-            None,
-            None,
+            attach_provider, {'providers': external_read(required, 'provider_id')}, None, None,
         )
     )
     job_registry.register_etl(
         EtlDefinition(
-            'area.external',
-            lambda claims: claims,
-            {'claims': external_read(direct, 'person_id')},
-            (output,),
-            None,
-            None,
-            (attach_provider,),
+            'area.external', lambda claims: claims, {'claims': external_read(direct, 'person_id')}, (output,),
+            None, None, (attach_provider,),
         )
     )
     graph = LineageGraph()
@@ -288,15 +243,10 @@ def test_normal_uses_queries_include_direct_and_required_external_datasets():
     assert graph.parents(output) == (direct, required)
     assert graph.consumers(direct, job_registry) == ('area.external',)
     assert graph.consumers(required, job_registry) == ('area.external',)
-    assert graph.requirement_consumers(required, job_registry) == (
-        attach_provider.__qualname__,
-    )
-    assert graph.external_consumers(required, job_registry) == graph.consumers(
-        required, job_registry
-    )
-    assert graph.external_requirement_consumers(
-        required, job_registry
-    ) == graph.requirement_consumers(required, job_registry)
+    assert graph.requirement_consumers(required, job_registry) == (attach_provider.__qualname__,)
+    assert graph.external_consumers(required, job_registry) == graph.consumers(required, job_registry)
+    assert graph.external_requirement_consumers(required, job_registry) == graph.requirement_consumers(required,
+                                                                                                       job_registry)
 
 
 def test_runtime_uses_and_consumers_include_observed_external_dataset():

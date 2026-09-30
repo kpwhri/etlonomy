@@ -15,12 +15,12 @@ class EtlDefinition:
     """Describe a registered top-level ETL job and its declared data contract."""
 
     name: str
-    function: Callable[..., object]
+    function: Callable
     inputs: Mapping[str, DependencyRead]
     outputs: tuple[DatasetId, ...]
     source_file: Path | None
     source_line: int | None
-    uses: tuple[Callable[..., object], ...] = ()
+    uses: tuple[Callable, ...] = ()
 
     def __post_init__(self):
         """Protect registered inputs and sequences from later mutation."""
@@ -33,11 +33,11 @@ class EtlDefinition:
 class RequirementDefinition:
     """Describe the datasets injected into a reusable function."""
 
-    function: Callable[..., object]
+    function: Callable
     inputs: Mapping[str, DependencyRead]
     source_file: Path | None
     source_line: int | None
-    uses: tuple[Callable[..., object], ...] = ()
+    uses: tuple[Callable, ...] = ()
     external_provider_bindings: Mapping[str, ExternalProviderBinding] = field(
         default_factory=dict
     )
@@ -59,7 +59,7 @@ class Registry:
     def __init__(self):
         """Create an empty ETL and requirement registry."""
         self._etls: dict[str, EtlDefinition] = {}
-        self._requirements: dict[Callable[..., object], RequirementDefinition] = {}
+        self._requirements: dict[Callable, RequirementDefinition] = {}
 
     def register_etl(self, definition: EtlDefinition):
         """Register an ETL definition, rejecting duplicate job names."""
@@ -87,7 +87,7 @@ class Registry:
             self._requirements.pop(definition.function)
             raise
 
-    def _validate_uses(self, uses: tuple[Callable[..., object], ...], owner: str):
+    def _validate_uses(self, uses: tuple[Callable, ...], owner: str):
         if len(set(uses)) != len(uses):
             raise RegistryError(f'{owner} contains duplicate uses declarations')
         for function in uses:
@@ -100,10 +100,10 @@ class Registry:
                 )
 
     def _validate_requirement_cycles(self):
-        visiting: set[Callable[..., object]] = set()
-        visited: set[Callable[..., object]] = set()
+        visiting: set[Callable] = set()
+        visited: set[Callable] = set()
 
-        def visit(function: Callable[..., object]):
+        def visit(function: Callable):
             if function in visiting:
                 raise RegistryError(
                     f'reusable-function uses cycle includes {function.__qualname__!r}'
@@ -131,7 +131,7 @@ class Registry:
         except KeyError as error:
             raise RegistryError(f'ETL job {name!r} is not registered') from error
 
-    def get_requirement(self, function: Callable[..., object]) -> RequirementDefinition:
+    def get_requirement(self, function: Callable) -> RequirementDefinition:
         """Return requirement metadata for a decorated function."""
         try:
             return self._requirements[function]

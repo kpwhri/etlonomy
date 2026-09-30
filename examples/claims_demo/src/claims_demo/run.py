@@ -8,7 +8,7 @@ import etlonomy
 from claims_demo import jobs  # noqa: F401
 
 
-def main() -> None:
+def main():
     """Resolve and execute the example ETL."""
     parser = argparse.ArgumentParser()
     parser.add_argument('--as-of', type=date.fromisoformat)

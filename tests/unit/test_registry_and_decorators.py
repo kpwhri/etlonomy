@@ -168,7 +168,7 @@ def test_source_metadata_falls_back_when_inspection_is_unavailable(monkeypatch):
     def helper():
         pass
 
-    def unavailable(function: object) -> str:
+    def unavailable(function) -> str:
         del function
         raise OSError('source unavailable')
 

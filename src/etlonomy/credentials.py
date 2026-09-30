@@ -38,7 +38,7 @@ class CredentialProvider(Protocol):
 class EnvironmentCredentialProvider:
     """Resolve credential fields from named environment variables."""
 
-    def __init__(self, environment: Mapping[str, str] | None = None) -> None:
+    def __init__(self, environment: Mapping[str, str] | None = None):
         """Use the supplied mapping, or the process environment when omitted."""
         self._environment = os.environ if environment is None else environment
 
@@ -80,7 +80,7 @@ class EnvironmentCredentialProvider:
 class MappingCredentialProvider:
     """Resolve exact references from an in-memory mapping, primarily for tests."""
 
-    def __init__(self, credentials: Mapping[str, ResolvedCredential]) -> None:
+    def __init__(self, credentials: Mapping[str, ResolvedCredential]):
         """Copy the supplied mapping so later caller mutation cannot change lookups."""
         self._credentials = dict(credentials)
 
@@ -97,15 +97,13 @@ class MappingCredentialProvider:
 class SchemeCredentialProvider:
     """Dispatch references to explicitly registered providers by URI scheme."""
 
-    def __init__(
-            self, providers: Mapping[str, CredentialProvider] | None = None
-    ) -> None:
+    def __init__(self, providers: Mapping[str, CredentialProvider] | None = None):
         """Register the initial provider mapping after validating scheme names."""
         self._providers: dict[str, CredentialProvider] = {}
         for scheme, provider in (providers or {}).items():
             self.register(scheme, provider)
 
-    def register(self, scheme: str, provider: CredentialProvider) -> None:
+    def register(self, scheme: str, provider: CredentialProvider):
         """Register one provider without importing or executing arbitrary classes."""
         normalized = scheme.lower().rstrip(':')
         if not _SCHEME.fullmatch(normalized):
@@ -156,12 +154,7 @@ KeePassFactory = Callable[[Path, str | None, Path | None], KeePassDatabase]
 class KeePassCredentialProvider:
     """Resolve ``keepass://profile/group/entry`` references through PyKeePass."""
 
-    def __init__(
-            self,
-            profiles: Mapping[str, KeePassProfile],
-            *,
-            factory: KeePassFactory | None = None,
-    ) -> None:
+    def __init__(self, profiles: Mapping[str, KeePassProfile], *, factory: KeePassFactory | None = None):
         """Store named profiles and optionally inject the KeePass opening boundary."""
         self._profiles = dict(profiles)
         self._factory = factory or _open_keepass
@@ -169,11 +162,7 @@ class KeePassCredentialProvider:
     def resolve(self, reference: str) -> ResolvedCredential:
         """Read one entry by full path while keeping database settings out of manifests."""
         parsed = urlsplit(reference)
-        if (
-                parsed.scheme != 'keepass'
-                or not parsed.netloc
-                or not parsed.path.strip('/')
-        ):
+        if parsed.scheme != 'keepass' or not parsed.netloc or not parsed.path.strip('/'):
             raise CredentialError(
                 'KeePass references must look like keepass://profile/group/entry'
             )

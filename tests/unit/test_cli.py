@@ -64,7 +64,7 @@ def test_catalog_validate_reports_manifest_error(tmp_path: Path, capsys):
     (manifests / 'bad.toml').write_text('not toml =', encoding='utf8')
 
     assert main(['catalog', 'validate', '--manifest-dir', str(manifests)]) == 1
-    assert 'error:' in capsys.readouterr().err  # type: ignore[attr-defined]
+    assert 'Error:' in capsys.readouterr().err  # type: ignore[attr-defined]
 
 
 def test_cli_validates_diffs_and_generates_datasets(tmp_path: Path, capsys):
@@ -348,9 +348,9 @@ def test_cli_reports_external_dependencies_and_consumers(capsys):
     assert main(['graph', 'cli.external_sources', '--format', 'json']) == 0
     graph = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
     assert [
-        'vdwcore:sv.vdw_claims',
-        f'function:{attach_external_claims.__qualname__}',
-    ] in graph['edges']
+               'vdwcore:sv.vdw_claims',
+               f'function:{attach_external_claims.__qualname__}',
+           ] in graph['edges']
 
     for output_format in ('text', 'mermaid', 'dot'):
         assert main(['graph', 'cli.external_sources', '--format', output_format]) == 0

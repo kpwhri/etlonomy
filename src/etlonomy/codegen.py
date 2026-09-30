@@ -19,7 +19,7 @@ def _class_name(subject: str) -> str:
     return f'_{_identifier(subject).title()}'
 
 
-def generate_datasets(catalog: SQLiteCatalog, output: Path) -> None:
+def generate_datasets(catalog: SQLiteCatalog, output: Path):
     """Write deterministic dataset constants from a SQLite catalog."""
     grouped: dict[str, list[str]] = defaultdict(list)
     collisions: dict[tuple[str, str], str] = {}

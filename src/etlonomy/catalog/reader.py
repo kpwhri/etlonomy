@@ -38,7 +38,7 @@ class ResolvedDataset:
     description: str | None
     columns: tuple[ColumnManifest, ...] | None = None
 
-    def __post_init__(self) -> None:
+    def __post_init__(self) :
         """Protect resolved source options from caller mutation."""
         object.__setattr__(self, 'options', MappingProxyType(dict(self.options)))
 
@@ -46,7 +46,7 @@ class ResolvedDataset:
 class SQLiteCatalog:
     """Provide read-only logical and temporal queries over a SQLite catalog."""
 
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path) :
         """Store the compiled catalog path without opening a persistent connection."""
         self.path = path
 

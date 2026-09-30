@@ -18,9 +18,7 @@ _ACTIVE_RUNTIME: ContextVar[Runtime | None] = ContextVar(
 _ACTIVE_DEPENDENCIES: ContextVar[list[DependencyRead] | None] = ContextVar(
     'etlonomy_active_dependencies', default=None
 )
-_ACTIVE_EXTERNAL_PROVIDERS: ContextVar[
-    Mapping[str, ExternalDatasetProvider]
-] = ContextVar(
+_ACTIVE_EXTERNAL_PROVIDERS: ContextVar[Mapping[str, ExternalDatasetProvider]] = ContextVar(
     'etlonomy_active_external_providers', default=MappingProxyType({})
 )
 
@@ -34,16 +32,12 @@ def get_active_runtime() -> Runtime:
     """
     runtime = _ACTIVE_RUNTIME.get()
     if runtime is None:
-        raise RegistryError(
-            'a requires-decorated function needs an active Runtime or explicit inputs'
-        )
+        raise RegistryError('A requires-decorated function needs an active Runtime or explicit inputs.')
     return runtime
 
 
 @contextmanager
-def _external_provider_scope(
-        providers: Mapping[str, ExternalDatasetProvider],
-) -> Iterator[None]:
+def _external_provider_scope(providers: Mapping[str, ExternalDatasetProvider]) -> Iterator[None]:
     """Temporarily overlay call-bound external providers for nested requirements."""
     active = dict(_ACTIVE_EXTERNAL_PROVIDERS.get())
     active.update(providers)
@@ -54,14 +48,14 @@ def _external_provider_scope(
         _ACTIVE_EXTERNAL_PROVIDERS.reset(token)
 
 
-def _resolve_requirement_inputs(inputs: Mapping[str, DependencyRead]) -> dict[str, object]:
+def _resolve_requirement_inputs(inputs: Mapping[str, DependencyRead]) -> dict:
     """Resolve reusable-function inputs through call bindings or a runtime."""
     runtime = _ACTIVE_RUNTIME.get()
     if runtime is not None:
         return runtime.resolve_inputs(inputs)
 
     providers = _ACTIVE_EXTERNAL_PROVIDERS.get()
-    resolved: dict[str, object] = {}
+    resolved: dict = {}
     for name, request in inputs.items():
         if isinstance(request, Read):
             raise RegistryError(
@@ -108,9 +102,9 @@ class Runtime:
 
     def resolve_inputs(
             self, inputs: Mapping[str, DependencyRead]
-    ) -> dict[str, object]:
+    ) -> dict:
         """Resolve named reads through catalog or external dataset providers."""
-        resolved: dict[str, object] = {}
+        resolved: dict = {}
         for name, request in inputs.items():
             if isinstance(request, Read):
                 resolved[name] = self.provider.read(request, self.context)
@@ -121,7 +115,7 @@ class Runtime:
                 active_dependencies.append(request)
         return resolved
 
-    def _read_external(self, request: ExternalRead) -> object:
+    def _read_external(self, request: ExternalRead):
         try:
             provider = _ACTIVE_EXTERNAL_PROVIDERS.get()[request.dataset.system]
         except KeyError as error:
@@ -148,7 +142,7 @@ class Runtime:
         runtime_token: Token[Runtime | None] = _ACTIVE_RUNTIME.set(self)
         successful = False
         try:
-            injected: dict[str, object] = dict(
+            injected: dict = dict(
                 self.resolve_inputs({
                     key: request
                     for key, request in definition.inputs.items()

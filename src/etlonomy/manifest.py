@@ -76,7 +76,7 @@ class DatasetVersionManifest:
     dependencies: tuple[DatasetId, ...] = ()
     columns: tuple[ColumnManifest, ...] = ()
 
-    def __post_init__(self) -> None:
+    def __post_init__(self):
         """Protect source options from mutation after manifest validation."""
         object.__setattr__(self, 'options', MappingProxyType(dict(self.options)))
 
@@ -98,7 +98,7 @@ class Manifest:
     datasets: tuple[DatasetManifest, ...]
 
 
-def _date(value: object, field_name: str) -> date:
+def _date(value, field_name: str) -> date:
     if isinstance(value, date):
         return value
     if isinstance(value, str):
@@ -109,7 +109,7 @@ def _date(value: object, field_name: str) -> date:
     raise ManifestError(f'{field_name} must be a TOML date or ISO date string')
 
 
-def _dataset_id(value: object, field_name: str) -> DatasetId:
+def _dataset_id(value, field_name: str) -> DatasetId:
     if not isinstance(value, str):
         raise ManifestError(f'{field_name} must be a string')
     try:
@@ -118,7 +118,7 @@ def _dataset_id(value: object, field_name: str) -> DatasetId:
         raise ManifestError(str(error)) from error
 
 
-def _optional_string(value: object, field_name: str) -> str | None:
+def _optional_string(value, field_name: str) -> str | None:
     if value is None:
         return None
     if not isinstance(value, str) or not value.strip():
@@ -128,14 +128,14 @@ def _optional_string(value: object, field_name: str) -> str | None:
 
 def _reject_unknown_fields(
         value: Mapping[str, object], allowed: frozenset[str], context: str
-) -> None:
+):
     for field_name in value.keys() - allowed:
         suggestion = get_close_matches(field_name, allowed, n=1)
         hint = f'; did you mean {suggestion[0]!r}?' if suggestion else ''
         raise ManifestError(f'unknown {context} field {field_name!r}{hint}')
 
 
-def _parse_columns(value: object) -> tuple[ColumnManifest, ...]:
+def _parse_columns(value) -> tuple[ColumnManifest, ...]:
     if value is None:
         return ()
     if not isinstance(value, dict):
@@ -168,7 +168,7 @@ def _parse_columns(value: object) -> tuple[ColumnManifest, ...]:
     return tuple(columns)
 
 
-def _parse_version(raw: object, canonical_name: str) -> DatasetVersionManifest:
+def _parse_version(raw, canonical_name: str) -> DatasetVersionManifest:
     if not isinstance(raw, dict):
         raise ManifestError(f'versions for {canonical_name} must be tables')
     _reject_unknown_fields(raw, _VERSION_FIELDS, 'dataset-version')
@@ -241,14 +241,14 @@ def _parse_version(raw: object, canonical_name: str) -> DatasetVersionManifest:
     )
 
 
-def _validate_sqlalchemy_url(value: str, field_name: str) -> None:
+def _validate_sqlalchemy_url(value: str, field_name: str):
     try:
         make_url(value)
     except (ArgumentError, TypeError, ValueError) as error:
         raise ManifestError(f'{field_name} must be a valid SQLAlchemy URL') from error
 
 
-def _validate_table_reference(value: str) -> None:
+def _validate_table_reference(value: str):
     parts = value.split('.')
     if not parts or any(not _SQL_IDENTIFIER.fullmatch(part) for part in parts):
         raise ManifestError(f'invalid SQL table reference: {value!r}')
@@ -256,7 +256,7 @@ def _validate_table_reference(value: str) -> None:
 
 def _validate_intervals(
         dataset: DatasetId, versions: tuple[DatasetVersionManifest, ...]
-) -> None:
+):
     for previous, current in zip(versions, versions[1:], strict=False):
         if previous.valid_to is None or current.valid_from < previous.valid_to:
             raise VersionOverlapError(
@@ -310,7 +310,7 @@ def _parse_manifest(data: bytes, *, validate_dependencies: bool) -> Manifest:
     return Manifest(1, tuple(sorted(datasets, key=lambda item: str(item.dataset))))
 
 
-def _validate_dependencies(datasets: tuple[DatasetManifest, ...]) -> None:
+def _validate_dependencies(datasets: tuple[DatasetManifest, ...]):
     known = {dataset.dataset for dataset in datasets}
     for dataset in datasets:
         for version in dataset.versions:
@@ -325,7 +325,7 @@ def _validate_dependencies(datasets: tuple[DatasetManifest, ...]) -> None:
     _validate_dependency_cycles(datasets)
 
 
-def _validate_dependency_cycles(datasets: tuple[DatasetManifest, ...]) -> None:
+def _validate_dependency_cycles(datasets: tuple[DatasetManifest, ...]):
     boundaries = sorted(
         {
             boundary
@@ -352,13 +352,11 @@ def _validate_dependency_cycles(datasets: tuple[DatasetManifest, ...]) -> None:
         _assert_dependency_graph_acyclic(graph, boundary)
 
 
-def _assert_dependency_graph_acyclic(
-        graph: Mapping[DatasetId, tuple[DatasetId, ...]], boundary: date
-) -> None:
+def _assert_dependency_graph_acyclic(graph: Mapping[DatasetId, tuple[DatasetId, ...]], boundary: date):
     visiting: set[DatasetId] = set()
     visited: set[DatasetId] = set()
 
-    def visit(dataset: DatasetId) -> None:
+    def visit(dataset: DatasetId):
         if dataset in visiting:
             raise DependencyCycleError(
                 f'dataset dependency cycle includes {dataset} on {boundary}'

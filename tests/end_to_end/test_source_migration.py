@@ -1,11 +1,12 @@
 """Run one unchanged ETL across real SAS and temporary SQLite sources."""
-
+import importlib
 import sqlite3
 from contextlib import closing
 from datetime import date
 from pathlib import Path
 
 import polars as pl
+import pytest
 
 from etlonomy.catalog import SQLiteCatalog, build_catalog
 from etlonomy.catalog_provider import CatalogDatasetProvider
@@ -16,6 +17,17 @@ from etlonomy.runtime import Runtime
 FIXTURE_DIRECTORY = Path(__file__).parents[1] / 'fixtures'
 
 
+def _sas_support_enabled() -> bool:
+    return importlib.util.find_spec('pyreadstat') is not None
+
+
+requires_sas = pytest.mark.skipif(
+    not _sas_support_enabled(),
+    reason='SAS7BDAT support requires the etlonomy sas extra',
+)
+
+
+@requires_sas
 def test_same_etl_runs_before_and_after_real_sas_to_sql_migration(tmp_path: Path):
     sas_path = FIXTURE_DIRECTORY / 'claim_line.sas7bdat'
     assert sas_path.is_file(), f'missing SAS fixture: {sas_path}'

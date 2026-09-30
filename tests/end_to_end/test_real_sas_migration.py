@@ -1,11 +1,12 @@
 """Prove one ETL and reusable helper survive a real SAS-to-SQL migration."""
-
+import importlib
 import sqlite3
 from contextlib import closing
 from datetime import date
 from pathlib import Path
 
 import polars as pl
+import pytest
 
 import etlonomy
 from etlonomy.catalog import SQLiteCatalog, build_catalog
@@ -14,7 +15,18 @@ from etlonomy.registry import Registry
 FIXTURE_DIRECTORY = Path(__file__).parents[1] / 'fixtures'
 
 
-def test_real_sas_and_sql_versions_run_unchanged_etl_with_requires_and_lineage(tmp_path: Path, monkeypatch) :
+def _sas_support_enabled() -> bool:
+    return importlib.util.find_spec('pyreadstat') is not None
+
+
+requires_sas = pytest.mark.skipif(
+    not _sas_support_enabled(),
+    reason='SAS7BDAT support requires the etlonomy sas extra',
+)
+
+
+@requires_sas
+def test_real_sas_and_sql_versions_run_unchanged_etl_with_requires_and_lineage(tmp_path: Path, monkeypatch):
     claim_path = FIXTURE_DIRECTORY / 'claim_line.sas7bdat'
     provider_path = FIXTURE_DIRECTORY / 'provider.sas7bdat'
     assert claim_path.is_file(), f'missing SAS fixture: {claim_path}'
