@@ -2,10 +2,9 @@
 
 import inspect
 import re
-from collections.abc import Callable, Mapping
 from functools import wraps
 from pathlib import Path
-from typing import cast
+from typing import Callable, cast, Mapping, ParamSpec, TypeVar
 
 from etlonomy.exceptions import RegistryError
 from etlonomy.models import DatasetId, DependencyRead, ExternalDatasetId
@@ -13,6 +12,9 @@ from etlonomy.providers import ExternalProviderBinding
 from etlonomy.registry import EtlDefinition, RequirementDefinition, registry
 
 _ETL_NAME = re.compile(r'^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$')
+
+P = ParamSpec('P')
+R = TypeVar('R')
 
 
 def _source(function: Callable) -> tuple[Path | None, int | None]:
@@ -41,12 +43,12 @@ def etl(
         inputs: Mapping[str, DependencyRead],
         outputs: tuple[DatasetId, ...] = (),
         uses: tuple[Callable, ...] = (),
-):
+) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """Declare and register a top-level ETL job."""
     if not _ETL_NAME.fullmatch(name):
         raise RegistryError('ETL job names must be dotted lowercase names')
 
-    def decorate(function):
+    def decorate(function: Callable[P, R]) -> Callable[P, R]:
         if getattr(function, '__etlonomy_requirement__', False):
             raise RegistryError('a function cannot use both etl and requires')
         _validate_inputs(function, inputs)
@@ -72,7 +74,7 @@ def requires(
         uses: tuple[Callable, ...] = (),
         external_provider_bindings: Mapping[str, ExternalProviderBinding] | None = None,
         **inputs: DependencyRead,
-):
+) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """Declare datasets injected into a reusable function.
 
     Explicit non-None inputs take precedence over call-bound and runtime providers.
@@ -93,7 +95,7 @@ def requires(
                 'external provider bindings must be ExternalProviderBinding values'
             )
 
-    def decorate(function: Callable) -> Callable:
+    def decorate(function: Callable[P, R]) -> Callable[P, R]:
         if getattr(function, '__etlonomy_etl__', False):
             raise RegistryError('a function cannot use both etl and requires')
         _validate_inputs(function, inputs)
@@ -121,7 +123,7 @@ def requires(
             )
 
         @wraps(function)
-        def wrapped(*args, **kwargs):
+        def wrapped(*args: P.args, **kwargs: P.kwargs) -> R:
             bound = signature.bind_partial(*args, **kwargs)
             unresolved = {
                 name: request
@@ -136,10 +138,7 @@ def requires(
                         and bound.arguments[binding.argument] is not None
                 )
             }
-            from etlonomy.runtime import (
-                _external_provider_scope,
-                _resolve_requirement_inputs,
-            )
+            from etlonomy.runtime import _external_provider_scope, _resolve_requirement_inputs
 
             with _external_provider_scope(providers):
                 if unresolved:
