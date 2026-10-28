@@ -1,5 +1,6 @@
 """Public API for logical, versioned ETL dataset resolution."""
 
+from etlonomy._version import __version__
 from etlonomy.catalog import ResolvedDataset, SQLiteCatalog, build_catalog
 from etlonomy.catalog_provider import CatalogDatasetProvider
 from etlonomy.credentials import (
@@ -57,8 +58,6 @@ from etlonomy.providers import (
 )
 from etlonomy.registry import EtlDefinition, Registry, RequirementDefinition, registry
 from etlonomy.runtime import Runtime
-
-__version__ = '0.1.0'
 
 __all__ = [
     'CatalogDatasetProvider',
